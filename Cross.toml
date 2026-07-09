@@ -1,0 +1,13 @@
+# Cross-compilation config for cross-rs (https://github.com/cross-rs/cross).
+#
+# Build for a 64-bit Raspberry Pi (Pi 3/4/5 running a 64-bit OS):
+#
+#     cross build --target aarch64-unknown-linux-gnu --release
+#
+# The default cross image already ships the aarch64 GCC toolchain and glibc,
+# which is all this project needs — `nmcli` is only a runtime dependency on the
+# Pi, not a build-time one.
+
+[target.aarch64-unknown-linux-gnu]
+# Pin the toolchain image so builds are reproducible across machines.
+image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:0.2.5"
