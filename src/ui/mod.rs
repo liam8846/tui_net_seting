@@ -7,8 +7,8 @@ pub mod devices;
 pub mod hotspot;
 pub mod keys;
 pub mod radio;
-pub mod wifi;
 pub mod widgets;
+pub mod wifi;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -37,9 +37,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 fn render_tabs(frame: &mut Frame, app: &App, area: Rect) {
-    let titles = Tab::ALL.iter().enumerate().map(|(i, t)| {
-        Line::from(format!(" {}:{} ", i + 1, t.title()))
-    });
+    let titles = Tab::ALL
+        .iter()
+        .enumerate()
+        .map(|(i, t)| Line::from(format!(" {}:{} ", i + 1, t.title())));
     let tabs = Tabs::new(titles)
         .select(app.tab.index())
         .highlight_style(
@@ -63,8 +64,7 @@ fn render_body(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_status(frame: &mut Frame, app: &App, area: Rect) {
-    let [top, hints] =
-        Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
+    let [top, hints] = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
 
     // Top line: spinner + in-flight label, else the most recent toast.
     let line = if let Some(inflight) = &app.in_flight {
@@ -79,15 +79,15 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
         Line::from(widgets::toast::span(toast))
     } else if app.loading.any() {
         Line::from(Span::styled(
-            format!("{} loading…", widgets::spinner::frame(app.tick)),
+            format!("{} 載入中…", widgets::spinner::frame(app.tick)),
             Style::default().fg(Color::DarkGray),
         ))
     } else {
         Line::from(Span::styled(
             if app.monitor_ok {
-                "ready"
+                "就緒"
             } else {
-                "ready (change monitor down — polling)"
+                "就緒（變更監視已停止，正在輪詢）"
             },
             Style::default().fg(Color::DarkGray),
         ))
@@ -103,10 +103,16 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
         ));
         spans.push(Span::raw(format!(" {label}   ")));
     }
-    spans.push(Span::styled(" ? ", Style::default().fg(Color::Black).bg(Color::Gray)));
-    spans.push(Span::raw(" help   "));
-    spans.push(Span::styled(" q ", Style::default().fg(Color::Black).bg(Color::Gray)));
-    spans.push(Span::raw(" quit"));
+    spans.push(Span::styled(
+        " ? ",
+        Style::default().fg(Color::Black).bg(Color::Gray),
+    ));
+    spans.push(Span::raw(" 說明   "));
+    spans.push(Span::styled(
+        " q ",
+        Style::default().fg(Color::Black).bg(Color::Gray),
+    ));
+    spans.push(Span::raw(" 離開"));
     frame.render_widget(Paragraph::new(Line::from(spans)), hints);
 }
 
@@ -130,10 +136,7 @@ fn render_help(frame: &mut Frame) {
                 Line::from("")
             } else {
                 Line::from(vec![
-                    Span::styled(
-                        format!("  {k:<22}"),
-                        Style::default().fg(Color::Cyan),
-                    ),
+                    Span::styled(format!("  {k:<22}"), Style::default().fg(Color::Cyan)),
                     Span::raw(v),
                 ])
             }
@@ -143,7 +146,7 @@ fn render_help(frame: &mut Frame) {
     let area = widgets::centered(frame.area(), 60, height);
     frame.render_widget(Clear, area);
     let block = Block::default()
-        .title(" Help — press ? or Esc to close ")
+        .title(" 說明（按 ? 或 Esc 關閉） ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(Paragraph::new(lines).block(block), area);
@@ -154,19 +157,19 @@ fn render_error(frame: &mut Frame, msg: &str) {
     frame.render_widget(Clear, area);
     let lines = vec![
         Line::from(Span::styled(
-            "NetworkManager is unavailable",
+            "NetworkManager 無法使用",
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(msg.to_string()),
         Line::from(""),
         Line::from(Span::styled(
-            "r retry    q quit",
+            "r 重試    q 離開",
             Style::default().fg(Color::DarkGray),
         )),
     ];
     let block = Block::default()
-        .title(" Error ")
+        .title(" 錯誤 ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Red));
     frame.render_widget(

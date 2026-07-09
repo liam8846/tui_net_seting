@@ -49,11 +49,11 @@ impl Tab {
 
     pub fn title(self) -> &'static str {
         match self {
-            Tab::Devices => "Devices",
-            Tab::Connections => "Connections",
+            Tab::Devices => "裝置",
+            Tab::Connections => "連線",
             Tab::Wifi => "Wi-Fi",
-            Tab::Hotspot => "Hotspot",
-            Tab::Radio => "Radio",
+            Tab::Hotspot => "熱點",
+            Tab::Radio => "無線",
         }
     }
 
@@ -150,40 +150,40 @@ impl OpKind {
     /// Spinner label while the operation is in flight.
     pub fn label(&self) -> String {
         match self {
-            Self::DeviceConnect(d) => format!("Connecting device {d}…"),
-            Self::DeviceDisconnect(d) => format!("Disconnecting device {d}…"),
-            Self::ConnUp(n) => format!("Activating \"{n}\"…"),
-            Self::ConnDown(n) => format!("Deactivating \"{n}\"…"),
-            Self::ConnDelete(n) => format!("Deleting \"{n}\"…"),
-            Self::ConnSave(n) => format!("Saving \"{n}\"…"),
-            Self::WifiConnect { ssid } => format!("Connecting to \"{ssid}\"…"),
-            Self::WifiForget(n) => format!("Forgetting \"{n}\"…"),
-            Self::HotspotUp => "Starting hotspot…".into(),
-            Self::HotspotDown => "Stopping hotspot…".into(),
-            Self::SetWifiRadio(true) => "Enabling Wi-Fi radio…".into(),
-            Self::SetWifiRadio(false) => "Disabling Wi-Fi radio…".into(),
-            Self::SetNetworking(true) => "Enabling networking…".into(),
-            Self::SetNetworking(false) => "Disabling networking…".into(),
+            Self::DeviceConnect(d) => format!("正在連接裝置 {d}…"),
+            Self::DeviceDisconnect(d) => format!("正在中斷裝置 {d}…"),
+            Self::ConnUp(n) => format!("正在啟用「{n}」…"),
+            Self::ConnDown(n) => format!("正在停用「{n}」…"),
+            Self::ConnDelete(n) => format!("正在刪除「{n}」…"),
+            Self::ConnSave(n) => format!("正在儲存「{n}」…"),
+            Self::WifiConnect { ssid } => format!("正在連接「{ssid}」…"),
+            Self::WifiForget(n) => format!("正在忘記「{n}」…"),
+            Self::HotspotUp => "正在啟動熱點…".into(),
+            Self::HotspotDown => "正在停止熱點…".into(),
+            Self::SetWifiRadio(true) => "正在啟用 Wi-Fi 無線電…".into(),
+            Self::SetWifiRadio(false) => "正在停用 Wi-Fi 無線電…".into(),
+            Self::SetNetworking(true) => "正在啟用網路…".into(),
+            Self::SetNetworking(false) => "正在停用網路…".into(),
         }
     }
 
     /// Success-toast text.
     pub fn done_label(&self) -> String {
         match self {
-            Self::DeviceConnect(d) => format!("Device {d} connected"),
-            Self::DeviceDisconnect(d) => format!("Device {d} disconnected"),
-            Self::ConnUp(n) => format!("\"{n}\" activated"),
-            Self::ConnDown(n) => format!("\"{n}\" deactivated"),
-            Self::ConnDelete(n) => format!("\"{n}\" deleted"),
-            Self::ConnSave(n) => format!("\"{n}\" saved"),
-            Self::WifiConnect { ssid } => format!("Connected to \"{ssid}\""),
-            Self::WifiForget(n) => format!("\"{n}\" forgotten"),
-            Self::HotspotUp => "Hotspot is up".into(),
-            Self::HotspotDown => "Hotspot stopped".into(),
-            Self::SetWifiRadio(true) => "Wi-Fi radio enabled".into(),
-            Self::SetWifiRadio(false) => "Wi-Fi radio disabled".into(),
-            Self::SetNetworking(true) => "Networking enabled".into(),
-            Self::SetNetworking(false) => "Networking disabled".into(),
+            Self::DeviceConnect(d) => format!("裝置 {d} 已連接"),
+            Self::DeviceDisconnect(d) => format!("裝置 {d} 已中斷"),
+            Self::ConnUp(n) => format!("「{n}」已啟用"),
+            Self::ConnDown(n) => format!("「{n}」已停用"),
+            Self::ConnDelete(n) => format!("「{n}」已刪除"),
+            Self::ConnSave(n) => format!("「{n}」已儲存"),
+            Self::WifiConnect { ssid } => format!("已連接到「{ssid}」"),
+            Self::WifiForget(n) => format!("已忘記「{n}」"),
+            Self::HotspotUp => "熱點已啟動".into(),
+            Self::HotspotDown => "熱點已停止".into(),
+            Self::SetWifiRadio(true) => "Wi-Fi 無線電已啟用".into(),
+            Self::SetWifiRadio(false) => "Wi-Fi 無線電已停用".into(),
+            Self::SetNetworking(true) => "網路已啟用".into(),
+            Self::SetNetworking(false) => "網路已停用".into(),
         }
     }
 }

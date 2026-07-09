@@ -49,9 +49,9 @@ fn field_line(
 pub fn render_connection(frame: &mut Frame, form: &ConnForm) {
     let rows = form.rows();
     let title = if form.draft.is_new() {
-        " Add connection ".to_string()
+        " 新增連線 ".to_string()
     } else {
-        format!(" Edit \"{}\" ", form.draft.name)
+        format!(" 編輯「{}」 ", form.draft.name)
     };
     let focused_field = form.focused();
 
@@ -91,15 +91,13 @@ pub fn render_connection(frame: &mut Frame, form: &ConnForm) {
 pub fn render_hotspot(frame: &mut Frame, form: &HotspotForm) {
     let masked = "•".repeat(form.password.chars().count());
     let fields = [
-        ("Interface", form.ifname().to_string(), form.focus == 0, true),
+        ("介面", form.ifname().to_string(), form.focus == 0, true),
         ("SSID", form.ssid.clone(), form.focus == 1, false),
-        ("Password", masked, form.focus == 2, false),
+        ("密碼", masked, form.focus == 2, false),
     ];
     let mut lines: Vec<Line> = fields
         .iter()
-        .map(|(label, value, focused, choice)| {
-            field_line(label, value, *focused, true, *choice)
-        })
+        .map(|(label, value, focused, choice)| field_line(label, value, *focused, true, *choice))
         .collect();
     lines.push(Line::from(""));
     if let Some(err) = &form.error {
@@ -109,12 +107,12 @@ pub fn render_hotspot(frame: &mut Frame, form: &HotspotForm) {
         )));
     }
     lines.push(hint_line());
-    render_modal(frame, " Create hotspot ", lines);
+    render_modal(frame, " 建立熱點 ", lines);
 }
 
 fn hint_line() -> Line<'static> {
     Line::from(Span::styled(
-        "Tab/↑↓ field   ←/→/Space cycle   Enter submit   Esc cancel",
+        "Tab/↑↓ 欄位   ←/→/Space 切換   Enter 送出   Esc 取消",
         Style::default().fg(Color::DarkGray),
     ))
 }
@@ -126,7 +124,11 @@ fn render_modal(frame: &mut Frame, title: &str, lines: Vec<Line>) {
     let block = Block::default()
         .title(title.to_string())
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+        .border_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        );
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let [body] = Layout::vertical([Constraint::Min(1)]).areas(inner);

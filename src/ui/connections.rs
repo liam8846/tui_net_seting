@@ -10,21 +10,24 @@ use crate::app::App;
 use crate::model::ConnectionType;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
-    let header = Row::new(["NAME", "TYPE", "DEVICE", "ACTIVE", "AUTO"])
-        .style(Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD));
+    let header = Row::new(["名稱", "類型", "裝置", "啟用", "自動"]).style(
+        Style::default()
+            .fg(Color::Gray)
+            .add_modifier(Modifier::BOLD),
+    );
 
     let rows = app.connections.items.iter().map(|c| {
         let active = if c.active {
-            Span::styled("● yes", Style::default().fg(Color::Green))
+            Span::styled("● 是", Style::default().fg(Color::Green))
         } else {
-            Span::styled("  no", Style::default().fg(Color::DarkGray))
+            Span::styled("  否", Style::default().fg(Color::DarkGray))
         };
         Row::new(vec![
             Cell::from(c.name.clone()),
             Cell::from(type_label(c.ctype)),
             Cell::from(c.device.clone().unwrap_or_else(|| "--".into())),
             Cell::from(active),
-            Cell::from(if c.autoconnect { "yes" } else { "no" }),
+            Cell::from(if c.autoconnect { "是" } else { "否" }),
         ])
     });
 
@@ -56,9 +59,9 @@ fn type_label(t: ConnectionType) -> String {
 
 fn block(app: &App) -> Block<'static> {
     let title = if app.loading.connections {
-        " Connections (loading…) "
+        " 連線 (載入中…) "
     } else {
-        " Connections "
+        " 連線 "
     };
     Block::default().title(title).borders(Borders::ALL)
 }

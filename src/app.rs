@@ -34,7 +34,10 @@ pub struct Rows<T> {
 
 impl<T> Rows<T> {
     fn new() -> Self {
-        Self { items: Vec::new(), selected: 0 }
+        Self {
+            items: Vec::new(),
+            selected: 0,
+        }
     }
 
     pub fn selected(&self) -> Option<&T> {
@@ -102,7 +105,10 @@ pub enum Modal {
     Help,
     /// Blocking error (NetworkManager unreachable). `r` retries, `q` quits.
     Error(String),
-    Confirm { prompt: String, on_yes: Confirmed },
+    Confirm {
+        prompt: String,
+        on_yes: Confirmed,
+    },
     Password(PasswordPrompt),
     ConnForm(ConnForm),
     HotspotForm(HotspotForm),
@@ -144,20 +150,28 @@ pub enum ConnField {
 impl ConnField {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Name => "Name",
-            Self::Type => "Type",
+            Self::Name => "名稱",
+            Self::Type => "類型",
             Self::Ssid => "SSID",
-            Self::Ifname => "Interface",
-            Self::Autoconnect => "Autoconnect",
-            Self::V4Method => "IPv4 method",
-            Self::V4Addresses => "IPv4 addresses",
-            Self::V4Gateway => "IPv4 gateway",
+            Self::Ifname => "介面",
+            Self::Autoconnect => "自動連接",
+            Self::V4Method => "IPv4 方式",
+            Self::V4Addresses => "IPv4 位址",
+            Self::V4Gateway => "IPv4 閘道",
             Self::V4Dns => "IPv4 DNS",
-            Self::V6Method => "IPv6 method",
-            Self::V6Addresses => "IPv6 addresses",
-            Self::V6Gateway => "IPv6 gateway",
+            Self::V6Method => "IPv6 方式",
+            Self::V6Addresses => "IPv6 位址",
+            Self::V6Gateway => "IPv6 閘道",
             Self::V6Dns => "IPv6 DNS",
         }
+    }
+}
+
+fn ip_method_label(method: IpMethod) -> &'static str {
+    match method {
+        IpMethod::Auto => "自動",
+        IpMethod::Manual => "手動",
+        IpMethod::Disabled => "停用",
     }
 }
 
@@ -171,11 +185,19 @@ pub struct ConnForm {
 
 impl ConnForm {
     pub fn add() -> Self {
-        Self { draft: ConnectionDraft::new_ethernet(), focus: 0, error: None }
+        Self {
+            draft: ConnectionDraft::new_ethernet(),
+            focus: 0,
+            error: None,
+        }
     }
 
     pub fn edit(draft: ConnectionDraft) -> Self {
-        Self { draft, focus: 0, error: None }
+        Self {
+            draft,
+            focus: 0,
+            error: None,
+        }
     }
 
     /// Display order with an "editable right now" flag (manual-only fields
@@ -204,7 +226,11 @@ impl ConnForm {
     }
 
     fn editable(&self) -> Vec<ConnField> {
-        self.rows().into_iter().filter(|(_, e)| *e).map(|(f, _)| f).collect()
+        self.rows()
+            .into_iter()
+            .filter(|(_, e)| *e)
+            .map(|(f, _)| f)
+            .collect()
     }
 
     pub fn focused(&self) -> ConnField {
@@ -232,12 +258,12 @@ impl ConnForm {
             ConnField::Type => d.ctype.label().to_string(),
             ConnField::Ssid => d.ssid.clone(),
             ConnField::Ifname => d.ifname.clone(),
-            ConnField::Autoconnect => if d.autoconnect { "yes" } else { "no" }.into(),
-            ConnField::V4Method => d.ipv4.method.nmcli_value().into(),
+            ConnField::Autoconnect => if d.autoconnect { "是" } else { "否" }.into(),
+            ConnField::V4Method => ip_method_label(d.ipv4.method).into(),
             ConnField::V4Addresses => d.ipv4.addresses.clone(),
             ConnField::V4Gateway => d.ipv4.gateway.clone(),
             ConnField::V4Dns => d.ipv4.dns.clone(),
-            ConnField::V6Method => d.ipv6.method.nmcli_value().into(),
+            ConnField::V6Method => ip_method_label(d.ipv6.method).into(),
             ConnField::V6Addresses => d.ipv6.addresses.clone(),
             ConnField::V6Gateway => d.ipv6.gateway.clone(),
             ConnField::V6Dns => d.ipv6.dns.clone(),
@@ -318,7 +344,10 @@ impl HotspotForm {
     }
 
     pub fn ifname(&self) -> &str {
-        self.ifnames.get(self.ifname_idx).map(String::as_str).unwrap_or("")
+        self.ifnames
+            .get(self.ifname_idx)
+            .map(String::as_str)
+            .unwrap_or("")
     }
 
     pub fn insert(&mut self, c: char) {
@@ -358,10 +387,10 @@ impl HotspotForm {
 
     pub fn validate(&self) -> Result<(), String> {
         if self.ifname().is_empty() {
-            return Err("no wifi interface selected".into());
+            return Err("尚未選擇 wifi 介面".into());
         }
         if self.ssid.trim().is_empty() {
-            return Err("SSID must not be empty".into());
+            return Err("SSID 不能為空".into());
         }
         validate_wifi_password(&self.password)
     }
@@ -494,7 +523,7 @@ impl App {
     /// Funnel for every mutating operation: enforces "at most one in flight".
     fn start_op(&mut self, op: OpKind, args: Vec<String>, effects: &mut Vec<Effect>) {
         if self.in_flight.is_some() {
-            self.toast_info("another operation is still running");
+            self.toast_info("另一個操作仍在執行中");
             return;
         }
         self.in_flight = Some(InFlight { label: op.label() });
@@ -546,7 +575,7 @@ impl App {
             Action::Quit => {
                 if self.in_flight.is_some() {
                     self.modal = Some(Modal::Confirm {
-                        prompt: "An operation is still running. Quit anyway?".into(),
+                        prompt: "操作仍在執行中。仍要離開？".into(),
                         on_yes: Confirmed::Quit,
                     });
                 } else {
@@ -577,7 +606,7 @@ impl App {
                     if d.dtype == DeviceType::Ethernet {
                         // Cutting the wire may drop the session you're in.
                         self.modal = Some(Modal::Confirm {
-                            prompt: format!("Disconnect wired device {name}?"),
+                            prompt: format!("要中斷有線裝置 {name} 嗎？"),
                             on_yes: Confirmed::DisconnectDevice(name),
                         });
                     } else {
@@ -613,7 +642,7 @@ impl App {
             Action::ConnDeactivate => {
                 if let Some(c) = self.connections.selected() {
                     if !c.active {
-                        self.toast_info("connection is not active");
+                        self.toast_info("連線未啟用");
                     } else {
                         let (name, uuid) = (c.name.clone(), c.uuid.clone());
                         self.start_op(
@@ -633,7 +662,7 @@ impl App {
             Action::ConnDelete => {
                 if let Some(c) = self.connections.selected() {
                     self.modal = Some(Modal::Confirm {
-                        prompt: format!("Delete connection \"{}\"?", c.name),
+                        prompt: format!("要刪除連線「{}」嗎？", c.name),
                         on_yes: Confirmed::DeleteConnection {
                             uuid: c.uuid.clone(),
                             name: c.name.clone(),
@@ -652,7 +681,7 @@ impl App {
                         &mut effects,
                     );
                 } else {
-                    self.toast_info("no connected wifi device");
+                    self.toast_info("沒有已連接的 wifi 裝置");
                 }
             }
             Action::WifiForget => {
@@ -660,14 +689,14 @@ impl App {
                     match self.saved_wifi_profile(&ap.ssid) {
                         Some(c) => {
                             self.modal = Some(Modal::Confirm {
-                                prompt: format!("Forget saved network \"{}\"?", c.name),
+                                prompt: format!("要忘記已儲存的網路「{}」嗎？", c.name),
                                 on_yes: Confirmed::ForgetWifi {
                                     uuid: c.uuid.clone(),
                                     name: c.name.clone(),
                                 },
                             });
                         }
-                        None => self.toast_info("no saved profile for this network"),
+                        None => self.toast_info("此網路沒有已儲存的設定檔"),
                     }
                 }
             }
@@ -675,7 +704,7 @@ impl App {
             Action::HotspotCreate => {
                 let ifnames = self.wifi_device_names();
                 if ifnames.is_empty() {
-                    self.toast_error("no wifi device available for a hotspot");
+                    self.toast_error("沒有可用於熱點的 wifi 裝置");
                 } else {
                     self.modal = Some(Modal::HotspotForm(HotspotForm::new(ifnames)));
                 }
@@ -683,11 +712,13 @@ impl App {
             Action::HotspotStop => match self.hotspot_profile() {
                 Some(c) => {
                     self.modal = Some(Modal::Confirm {
-                        prompt: "Stop and delete the hotspot?".into(),
-                        on_yes: Confirmed::StopHotspot { uuid: c.uuid.clone() },
+                        prompt: "要停止並刪除熱點嗎？".into(),
+                        on_yes: Confirmed::StopHotspot {
+                            uuid: c.uuid.clone(),
+                        },
                     });
                 }
-                None => self.toast_info("no hotspot profile found"),
+                None => self.toast_info("找不到熱點設定檔"),
             },
             Action::RadioToggle => self.radio_toggle(&mut effects),
 
@@ -708,7 +739,11 @@ impl App {
         match self.tab {
             Tab::Devices => {
                 let before = self.devices.selected;
-                if up { self.devices.up() } else { self.devices.down() }
+                if up {
+                    self.devices.up()
+                } else {
+                    self.devices.down()
+                }
                 // Keep an open detail pane in sync with the selection.
                 if self.devices.selected != before
                     && self.detail.is_some()
@@ -718,10 +753,18 @@ impl App {
                 }
             }
             Tab::Connections => {
-                if up { self.connections.up() } else { self.connections.down() }
+                if up {
+                    self.connections.up()
+                } else {
+                    self.connections.down()
+                }
             }
             Tab::Wifi => {
-                if up { self.wifi.up() } else { self.wifi.down() }
+                if up {
+                    self.wifi.up()
+                } else {
+                    self.wifi.down()
+                }
             }
             Tab::Radio => {
                 self.radio_sel = if up { 0 } else { 1 };
@@ -731,20 +774,26 @@ impl App {
     }
 
     fn wifi_connect(&mut self, effects: &mut Vec<Effect>) {
-        let Some(ap) = self.wifi.selected() else { return };
+        let Some(ap) = self.wifi.selected() else {
+            return;
+        };
         if ap.is_hidden() {
-            self.toast_info("hidden networks are not supported yet");
+            self.toast_info("尚未支援隱藏網路");
             return;
         }
         if ap.in_use {
-            self.toast_info("already connected to this network");
+            self.toast_info("已連接到此網路");
             return;
         }
         let ssid = ap.ssid.clone();
         let secured = ap.is_secured();
         if let Some(saved) = self.saved_wifi_profile(&ssid) {
             let (name, uuid) = (saved.name.clone(), saved.uuid.clone());
-            self.start_op(OpKind::ConnUp(name), cmd::args_connection_up(&uuid), effects);
+            self.start_op(
+                OpKind::ConnUp(name),
+                cmd::args_connection_up(&uuid),
+                effects,
+            );
         } else if secured {
             self.modal = Some(Modal::Password(PasswordPrompt {
                 ssid,
@@ -762,13 +811,13 @@ impl App {
 
     fn radio_toggle(&mut self, effects: &mut Vec<Effect>) {
         let Some(radio) = self.radio else {
-            self.toast_info("radio state not loaded yet");
+            self.toast_info("無線狀態尚未載入");
             return;
         };
         if self.radio_sel == 0 {
             if radio.networking {
                 self.modal = Some(Modal::Confirm {
-                    prompt: "Disable networking? This drops ALL connectivity.".into(),
+                    prompt: "要停用網路嗎？這會中斷所有連線。".into(),
                     on_yes: Confirmed::NetworkingOff,
                 });
             } else {
@@ -887,7 +936,7 @@ impl App {
         match &mut self.modal {
             Some(Modal::Password(p)) => {
                 if p.input.is_empty() {
-                    p.error = Some("password must not be empty".into());
+                    p.error = Some("密碼不能為空".into());
                     return;
                 }
                 p.error = None;
@@ -981,13 +1030,13 @@ impl App {
             Msg::MonitorDied => {
                 if self.monitor_ok {
                     self.monitor_ok = false;
-                    self.toast_error("change monitor lost — polling every 10 s");
+                    self.toast_error("變更監視中斷，每 10 秒輪詢一次");
                 }
             }
             Msg::MonitorUp => {
                 if !self.monitor_ok {
                     self.monitor_ok = true;
-                    self.toast_info("change monitoring restored");
+                    self.toast_info("變更監視已恢復");
                 }
             }
         }
@@ -1055,13 +1104,17 @@ impl App {
                 self.loading.connections = true;
                 effects.push(Effect::LoadConnections);
             }
-            OpKind::ConnUp(_) | OpKind::ConnDown(_) | OpKind::ConnDelete(_)
+            OpKind::ConnUp(_)
+            | OpKind::ConnDown(_)
+            | OpKind::ConnDelete(_)
             | OpKind::ConnSave(_) => {
                 effects.push(devices());
                 self.loading.connections = true;
                 effects.push(Effect::LoadConnections);
             }
-            OpKind::WifiConnect { .. } | OpKind::WifiForget(_) | OpKind::HotspotUp
+            OpKind::WifiConnect { .. }
+            | OpKind::WifiForget(_)
+            | OpKind::HotspotUp
             | OpKind::HotspotDown => {
                 effects.push(devices());
                 self.loading.connections = true;

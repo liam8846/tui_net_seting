@@ -16,25 +16,25 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
     let lines = vec![
         Line::from(""),
-        toggle_row("Networking", networking, app.radio_sel == 0),
+        toggle_row("網路", networking, app.radio_sel == 0),
         Line::from(""),
-        toggle_row("Wi-Fi radio", wifi, app.radio_sel == 1),
+        toggle_row("Wi-Fi 無線電", wifi, app.radio_sel == 1),
         Line::from(""),
         Line::from(Span::styled(
-            "  ↑/↓ select   Enter/Space toggle",
+            "  ↑/↓ 選取   Enter/Space 切換",
             Style::default().fg(Color::DarkGray),
         )),
     ];
 
-    let block = Block::default().title(" Radio ").borders(Borders::ALL);
+    let block = Block::default().title(" 無線 ").borders(Borders::ALL);
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn toggle_row(label: &str, state: Option<bool>, selected: bool) -> Line<'static> {
     let marker = if selected { "› " } else { "  " };
     let (text, color) = match state {
-        Some(true) => ("[ on  ]", Color::Green),
-        Some(false) => ("[ off ]", Color::Red),
+        Some(true) => ("[ 開 ]", Color::Green),
+        Some(false) => ("[ 關 ]", Color::Red),
         None => ("[ ... ]", Color::DarkGray),
     };
     let label_style = if selected {

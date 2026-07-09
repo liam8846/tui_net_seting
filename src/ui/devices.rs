@@ -5,9 +5,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{
-    Block, Borders, Cell, Paragraph, Row, Table, TableState, Wrap,
-};
+use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState, Wrap};
 
 use crate::app::App;
 use crate::model::{DeviceState, DeviceType};
@@ -27,8 +25,11 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_table(frame: &mut Frame, app: &App, area: Rect) {
-    let header = Row::new(["DEVICE", "TYPE", "STATE", "CONNECTION"])
-        .style(Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD));
+    let header = Row::new(["裝置", "類型", "狀態", "連線"]).style(
+        Style::default()
+            .fg(Color::Gray)
+            .add_modifier(Modifier::BOLD),
+    );
 
     let rows = app.devices.items.iter().map(|d| {
         Row::new(vec![
@@ -54,7 +55,7 @@ fn render_table(frame: &mut Frame, app: &App, area: Rect) {
     .header(header)
     .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .highlight_symbol("› ")
-    .block(block(app, "Devices"));
+    .block(block(app, "裝置"));
 
     let mut state = TableState::default();
     if !app.devices.items.is_empty() {
@@ -80,11 +81,13 @@ fn render_detail(frame: &mut Frame, app: &App, area: Rect) {
         .collect();
 
     let block = Block::default()
-        .title(format!(" {} details ", pane.device))
+        .title(format!(" {} 詳細資訊 ", pane.device))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(
-        Paragraph::new(lines).block(block).wrap(Wrap { trim: false }),
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false }),
         area,
     );
 }
@@ -102,7 +105,9 @@ fn is_interesting(key: &str) -> bool {
         "IP4.GATEWAY",
         "IP6.GATEWAY",
     ];
-    KEEP.contains(&key) || key.starts_with("IP4.ADDRESS") || key.starts_with("IP4.DNS")
+    KEEP.contains(&key)
+        || key.starts_with("IP4.ADDRESS")
+        || key.starts_with("IP4.DNS")
         || key.starts_with("IP6.ADDRESS")
 }
 
@@ -128,7 +133,7 @@ fn state_style(state: &DeviceState) -> Style {
 fn block(app: &App, title: &str) -> Block<'static> {
     let mut t = format!(" {title} ");
     if app.loading.devices {
-        t = format!(" {title} (loading…) ");
+        t = format!(" {title} (載入中…) ");
     }
     Block::default().title(t).borders(Borders::ALL)
 }

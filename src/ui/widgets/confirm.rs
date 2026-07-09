@@ -16,13 +16,13 @@ pub fn render(frame: &mut Frame, prompt: &str) {
         Line::from(""),
         Line::from(vec![
             Span::styled("[y]", Style::default().fg(Color::Green)),
-            Span::raw(" yes    "),
+            Span::raw(" 是    "),
             Span::styled("[n]", Style::default().fg(Color::Red)),
-            Span::raw(" no"),
+            Span::raw(" 否"),
         ]),
     ];
     let block = Block::default()
-        .title(" Confirm ")
+        .title(" 確認 ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Yellow));
     frame.render_widget(

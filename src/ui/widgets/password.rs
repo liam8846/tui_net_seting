@@ -14,7 +14,7 @@ pub fn render(frame: &mut Frame, prompt: &PasswordPrompt) {
     frame.render_widget(Clear, area);
 
     let block = Block::default()
-        .title(format!(" Connect to \"{}\" ", prompt.ssid))
+        .title(format!(" 連接到「{}」 ", prompt.ssid))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
     let inner = block.inner(area);
@@ -31,7 +31,7 @@ pub fn render(frame: &mut Frame, prompt: &PasswordPrompt) {
     constraints.push(Constraint::Min(1)); // hint
     let rows = Layout::vertical(constraints).split(inner);
 
-    frame.render_widget(Paragraph::new("Password:"), rows[0]);
+    frame.render_widget(Paragraph::new("密碼："), rows[0]);
     let masked = "•".repeat(prompt.input.chars().count());
     frame.render_widget(
         Paragraph::new(Line::from(vec![
@@ -53,7 +53,7 @@ pub fn render(frame: &mut Frame, prompt: &PasswordPrompt) {
     let hint_row = rows.len() - 1;
     frame.render_widget(
         Paragraph::new(Span::styled(
-            "Enter connect   Esc cancel",
+            "Enter 連接   Esc 取消",
             Style::default().fg(Color::DarkGray),
         )),
         rows[hint_row],

@@ -28,10 +28,10 @@ impl DeviceType {
 
     pub fn label(&self) -> &str {
         match self {
-            Self::Ethernet => "ethernet",
+            Self::Ethernet => "有線",
             Self::Wifi => "wifi",
-            Self::Loopback => "loopback",
-            Self::Bridge => "bridge",
+            Self::Loopback => "回環",
+            Self::Bridge => "橋接",
             Self::Tun => "tun",
             Self::WifiP2p => "wifi-p2p",
             Self::Other(s) => s,
@@ -73,12 +73,12 @@ impl DeviceState {
 
     pub fn label(&self) -> &str {
         match self {
-            Self::Connected => "connected",
-            Self::Connecting => "connecting",
-            Self::Disconnected => "disconnected",
-            Self::Unavailable => "unavailable",
-            Self::Unmanaged => "unmanaged",
-            Self::Deactivating => "deactivating",
+            Self::Connected => "已連接",
+            Self::Connecting => "連接中",
+            Self::Disconnected => "未連接",
+            Self::Unavailable => "不可用",
+            Self::Unmanaged => "未管理",
+            Self::Deactivating => "停用中",
             Self::Other(s) => s,
         }
     }

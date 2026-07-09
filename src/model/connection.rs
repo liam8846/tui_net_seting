@@ -26,10 +26,10 @@ impl ConnectionType {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Ethernet => "ethernet",
+            Self::Ethernet => "有線",
             Self::Wifi => "wifi",
-            Self::Loopback => "loopback",
-            Self::Other => "other",
+            Self::Loopback => "回環",
+            Self::Other => "其他",
         }
     }
 
@@ -195,10 +195,10 @@ impl ConnectionDraft {
     /// Local validation before anything is sent to nmcli.
     pub fn validate(&self) -> Result<(), String> {
         if self.name.trim().is_empty() {
-            return Err("name must not be empty".into());
+            return Err("名稱不能為空".into());
         }
         if self.is_new() && self.ctype.is_wifi() && self.ssid.trim().is_empty() {
-            return Err("SSID must not be empty for a wifi profile".into());
+            return Err("wifi 設定檔的 SSID 不能為空".into());
         }
         validate_family(&self.ipv4, false)?;
         validate_family(&self.ipv6, true)?;
@@ -212,14 +212,13 @@ fn validate_family(ip: &IpDraft, v6: bool) -> Result<(), String> {
         return Ok(());
     }
     if ip.addresses.trim().is_empty() {
-        return Err(format!("{fam}: manual method needs at least one address"));
+        return Err(format!("{fam}: 手動方式需要至少一個位址"));
     }
     for addr in split_list(&ip.addresses) {
-        validate_cidr(addr, v6).map_err(|e| format!("{fam} address {addr:?}: {e}"))?;
+        validate_cidr(addr, v6).map_err(|e| format!("{fam} 位址 {addr:?}: {e}"))?;
     }
     if !ip.gateway.trim().is_empty() {
-        validate_ip(ip.gateway.trim(), v6)
-            .map_err(|e| format!("{fam} gateway: {e}"))?;
+        validate_ip(ip.gateway.trim(), v6).map_err(|e| format!("{fam} 閘道: {e}"))?;
     }
     for dns in split_list(&ip.dns) {
         validate_ip(dns, v6).map_err(|e| format!("{fam} DNS {dns:?}: {e}"))?;
@@ -235,8 +234,8 @@ pub fn validate_ip(s: &str, v6: bool) -> Result<(), String> {
     match IpAddr::from_str(s) {
         Ok(IpAddr::V4(_)) if !v6 => Ok(()),
         Ok(IpAddr::V6(_)) if v6 => Ok(()),
-        Ok(_) => Err("wrong address family".into()),
-        Err(_) => Err("not a valid IP address".into()),
+        Ok(_) => Err("位址家族不符".into()),
+        Err(_) => Err("不是有效的 IP 位址".into()),
     }
 }
 
@@ -245,17 +244,17 @@ pub fn validate_ip(s: &str, v6: bool) -> Result<(), String> {
 pub fn validate_cidr(s: &str, v6: bool) -> Result<(), String> {
     let (ip, prefix) = s
         .split_once('/')
-        .ok_or_else(|| "expected address/prefix (e.g. 192.0.2.10/24)".to_string())?;
+        .ok_or_else(|| "預期為 位址/前綴（例如 192.0.2.10/24）".to_string())?;
     let max = if v6 {
-        Ipv6Addr::from_str(ip).map_err(|_| "not a valid IPv6 address".to_string())?;
+        Ipv6Addr::from_str(ip).map_err(|_| "不是有效的 IPv6 位址".to_string())?;
         128
     } else {
-        Ipv4Addr::from_str(ip).map_err(|_| "not a valid IPv4 address".to_string())?;
+        Ipv4Addr::from_str(ip).map_err(|_| "不是有效的 IPv4 位址".to_string())?;
         32
     };
     match prefix.parse::<u8>() {
         Ok(p) if p <= max => Ok(()),
-        _ => Err(format!("prefix must be 0-{max}")),
+        _ => Err(format!("前綴必須為 0-{max}")),
     }
 }
 
@@ -265,7 +264,7 @@ pub fn validate_wifi_password(pw: &str) -> Result<(), String> {
     if (8..=63).contains(&len) {
         Ok(())
     } else {
-        Err("password must be 8-63 characters".into())
+        Err("密碼必須為 8-63 個字元".into())
     }
 }
 
