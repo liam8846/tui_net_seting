@@ -1,102 +1,73 @@
 # tui_net_seting
 
-An asynchronous terminal UI (TUI) for managing NetworkManager through `nmcli`,
-built with [ratatui] and [tokio]. It lets you browse and change network
-settings — devices, connection profiles, Wi-Fi, hotspot and radio switches —
-without leaving the terminal, and never blocks the UI while `nmcli` runs.
+基於 [ratatui] 與 [tokio] 開發的 NetworkManager 非同步終端使用者介面 (TUI)，透過 `nmcli` 進行管理。它能讓您在不離開終端機的情況下瀏覽與修改網路設定 — 包含裝置、連線設定檔、Wi-Fi、熱點與無線開關 — 且在執行 `nmcli` 時絕不會阻塞 UI。
 
-> **Platform:** Linux with NetworkManager only. The code builds and its tests
-> run on any OS (Windows/macOS included) via `cargo check` / `cargo test`, but
-> the app itself must run on a machine where `nmcli` is available.
+> **平台需求：** 僅支援搭載 NetworkManager 的 Linux 系統。此專案的程式碼與測試可在任何作業系統（包括 Windows/macOS）上透過 `cargo check` / `cargo test` 進行編譯與執行，但應用程式本身必須在有安裝並啟用 `nmcli` 的環境中運作。
 
-## Features
+## 功能特性
 
-- **Devices** — list with type/state/active connection; connect / disconnect;
-  a details pane (IP addresses, gateway, DNS, MAC, MTU, link speed).
-- **Connections** — list profiles; activate / deactivate; add / edit / delete.
-  The editor covers IPv4 & IPv6 method (auto / manual / disabled), static
-  addresses, gateway, DNS servers, the autoconnect flag and the connection name.
-- **Wi-Fi** — scan / rescan; access-point list with signal bars, security
-  badges and the in-use marker; connect (prompting for a password on secured
-  networks); disconnect; forget a saved network.
-- **Hotspot** — create a Wi-Fi hotspot (interface / SSID / password) and tear
-  it down.
-- **Radio** — toggle global networking and the Wi-Fi radio.
+- **網路裝置 (Devices)** — 列出裝置類型、狀態與已啟用的連線；支援連接與中斷連線；提供詳細資訊面板（顯示 IP 位址、閘道器、DNS、MAC 位址、MTU、連線速度等）。
+- **連線設定檔 (Connections)** — 列出連線設定檔；啟用與停用設定檔；新增、編輯與刪除。編輯器支援 IPv4 與 IPv6 的配置方式（自動/手動/停用）、靜態 IP 位址、閘道器、DNS 伺服器、自動連線標記以及連線名稱。
+- **Wi-Fi 網路** — 掃描與重新掃描；列出存取點 (AP) 及其訊號強度、安全性標記與使用中狀態；支援連接（若為安全網路會提示輸入密碼）、中斷連線以及忘記已儲存的網路。
+- **無線熱點 (Hotspot)** — 建立 Wi-Fi 熱點（可指定介面、SSID 與密碼）並支援關閉熱點。
+- **無線開關 (Radio)** — 切換全局網路功能與 Wi-Fi 無線電開關。
 
-## Running
+## 執行方式
 
 ```sh
 cargo run --release
 ```
 
-Run it as your normal desktop-session user: NetworkManager delegates
-authorization to **polkit**, which by default grants an active local session
-the right to control networking. Over plain SSH (no session) some operations
-return "not authorized" — this surfaces as an error toast rather than a crash.
+請以一般的桌面階段使用者權限執行即可：NetworkManager 會將授權委託給 **polkit**，在預設情況下，polkit 會授予本機作用中階段控制網路的權限。若透過一般的 SSH（無作用中本機階段）連接，某些操作可能會回傳「未授權 (not authorized)」錯誤 — 此錯誤會以錯誤通知 (toast) 顯示，而不會導致程式崩潰。
 
-### Keys
+### 快速鍵
 
-| Key | Action |
+| 按鍵 | 操作 |
 | --- | --- |
-| `1`–`5`, `Tab` / `Shift-Tab` | switch tabs |
-| `j` / `k` / `↑` / `↓` | move selection |
-| `r` | refresh (rescan on the Wi-Fi tab) |
-| `?` | help overlay |
-| `q` / `Ctrl-C` | quit |
-| `Esc` | close a pane / cancel a modal |
+| `1`–`5`, `Tab` / `Shift-Tab` | 切換分頁 |
+| `j` / `k` / `↑` / `↓` | 移動選取項目 |
+| `r` | 重新整理（在 Wi-Fi 分頁為重新掃描） |
+| `?` | 顯示說明畫面 |
+| `q` / `Ctrl-C` | 退出程式 |
+| `Esc` | 關閉面板 / 取消對話框 |
 
-Per-tab keys are shown in the status bar and the help overlay (`?`).
+各分頁的專屬快速鍵會顯示在底部的狀態列與說明畫面 (`?`) 中。
 
-## Design
+## 架構設計
 
-The module layout mirrors responsibility, not screens:
+模組的配置結構反映了其職責，而非畫面：
 
-| Module | Responsibility |
+| 模組 | 職責 |
 | --- | --- |
-| `nm/` | Everything that talks to `nmcli` (command building, execution, exit-code mapping, the change monitor). No TUI types. |
-| `parse/` | Zero-copy parsing of `nmcli -t` terse output into borrowed rows. No I/O. |
-| `model/` | Owned domain types + the single borrowed→owned boundary (`From<Row<'_>>`). |
-| `event.rs` | The `Event` / `Action` / `Msg` enums and `AppError`. |
-| `app.rs` | A pure state machine (`apply` / `on_msg` / `on_tick`) — no I/O, fully unit-testable. |
-| `effect.rs` | The only place `nmcli` work is spawned; results flow back over an mpsc channel. |
-| `ui/` | Rendering only — never mutates state, never does I/O. |
-| `tui.rs` | Terminal lifecycle + a panic hook that restores the terminal first. |
+| `nm/` | 所有與 `nmcli` 通訊的邏輯（命令建構、執行、結束碼對應、變更監控）。不包含任何 TUI 類型。 |
+| `parse/` | 將 `nmcli -t` 的簡潔輸出進行零拷貝 (zero-copy) 解析，轉換為借用的資料列 (rows)。不進行任何 I/O。 |
+| `model/` | 擁有所有權的領域類型，以及唯一的「借用 -> 擁有」邊界轉換 (`From<Row<'_>>`)。 |
+| `event.rs` | `Event`、`Action`、`Msg` 列舉型別與 `AppError` 錯誤。 |
+| `app.rs` | 純粹的狀態機 (`apply` / `on_msg` / `on_tick`) — 無 I/O，完全可進行單元測試。 |
+| `effect.rs` | 唯一會產生 `nmcli` 背景任務的地方，執行結果會透過 mpsc 通道回傳。 |
+| `ui/` | 僅負責畫面繪製 — 絕不修改狀態，也不執行任何 I/O。 |
+| `tui.rs` | 終端機生命週期管理，以及確保崩潰時先復原終端機狀態的 panic hook。 |
 
-The async event loop merges three sources with `tokio::select!`: crossterm's
-`EventStream` (input), the worker-result channel, and a 250 ms tick (spinner /
-toast expiry). Mutations are serialized — at most one is in flight at a time —
-while reads and refreshes run concurrently. A long-lived `nmcli monitor` child
-signals external changes; if it dies the app falls back to timer polling.
+非同步事件迴圈使用 `tokio::select!` 整合了三個資料來源：crossterm 的 `EventStream`（輸入）、工作執行緒的結果通道，以及一個 250 毫秒的計時器 tick（用於微調動畫與 toast 提示過期）。所有狀態修改操作都是序列化執行的 — 同一時間最多只有一個修改操作在背景執行 — 而讀取與重新整理則是併發執行的。背景常駐的 `nmcli monitor` 子行程會監聽外部狀態變更；如果該行程終止，應用程式會降級使用定時輪詢。
 
-### Zero-copy parsing
+### 零拷貝解析 (Zero-copy parsing)
 
-`nmcli` terse output escapes `:` and `\` inside values. `parse/terse.rs` splits
-lines on *unescaped* colons yielding borrowed `&str` slices, and unescaping
-returns `Cow<'_, str>` that borrows unless an escape is actually present. Rows
-borrow straight from the captured stdout buffer; the borrowed→owned conversion
-happens exactly once, at the mpsc boundary, in the `model` layer. The device
-details pane goes further and reparses its raw buffer at draw time, allocating
-nothing.
+`nmcli` 的簡潔輸出會將數值中的 `:` 與 `\` 進行跳脫。`parse/terse.rs` 會基於*未跳脫*的冒號分割每一行，產生借用生命週期的 `&str` 切片，並在取消跳脫時回傳 `Cow<'_, str>`（除非有實際的跳脫字元，否則不會分配記憶體）。資料列直接借用自捕獲的標準輸出 (stdout) 緩衝區；「借用 -> 擁有」的轉換只會發生一次，即在 mpsc 通道邊界進入 `model` 層時。裝置詳細資訊面板更進一步，在繪製時直接重新解析其原始緩衝區，完全不分配額外記憶體。
 
-## Security note
+## 安全性說明
 
-Connecting to a secured Wi-Fi network runs
-`nmcli device wifi connect <ssid> password <secret>`. For the brief lifetime of
-that process the password is visible in the process argument list
-(`/proc/<pid>/cmdline`) to other users on the machine. This is an accepted
-trade-off for v1 (nmcli's interactive `--ask` prompt is unusable behind a TUI).
+當連接到受密碼保護的 Wi-Fi 網路時，程式會執行
+`nmcli device wifi connect <ssid> password <secret>`。在該子行程執行的短暫生命週期內，密碼會以行程引數的形式顯露於 `/proc/<pid>/cmdline`，使本機的其他使用者能夠看見。這是第 1 版中已知的權衡折衷（因為 `nmcli` 的互動式 `--ask` 提示在 TUI 後方無法運作）。
 
-## Development
+## 開發環境
 
 ```sh
-cargo check --all-targets          # compiles on any OS
+cargo check --all-targets          # 可在任何作業系統上編譯
 cargo clippy --all-targets -- -D warnings
-cargo test                         # parser + state-machine tests, no nmcli needed
+cargo test                         # 解析器與狀態機測試，不需安裝 nmcli
 ```
 
-Production code paths deny `unwrap`/`expect` (`clippy::unwrap_used`); tests are
-exempt. Parser tests use captured fixtures under `tests/fixtures/`, including
-adversarial cases (escaped SSIDs, hidden networks, `--` placeholders).
+生產環境程式碼路徑中禁止使用 `unwrap` 或 `expect` (`clippy::unwrap_used`)；測試程式碼不受此限。解析器測試使用位於 `tests/fixtures/` 下的預錄測試夾具，包含各種極端情況（已跳脫的 SSID、隱藏網路與 `--` 佔位符）。
 
 [ratatui]: https://ratatui.rs
 [tokio]: https://tokio.rs
