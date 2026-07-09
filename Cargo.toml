@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "sync", "time", "io-util"] }
+futures-util = { version = "0.3", default-features = false }
+thiserror = "2"
+color-eyre = "0.6"
+
+[dev-dependencies]
+pretty_assertions = "1"

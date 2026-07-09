@@ -1,0 +1,5 @@
+eth0:ethernet:connected:Wired connection 1
+wlan0:wifi:connected:CafeWifi
+docker0:bridge:connected:docker0
+lo:loopback:unmanaged:--
+wlp3s0:wifi:disconnected:--
