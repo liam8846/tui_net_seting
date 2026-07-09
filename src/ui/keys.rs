@@ -53,18 +53,67 @@ fn confirm_keys(key: &KeyEvent) -> Option<Action> {
 
 /// Shared editing keys for the password / connection / hotspot forms.
 fn text_modal_keys(key: &KeyEvent) -> Option<Action> {
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let text_modifier = key
+        .modifiers
+        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+
     match key.code {
         KeyCode::Esc => Some(Action::ModalCancel),
         KeyCode::Enter => Some(Action::FormSubmit),
         KeyCode::Tab | KeyCode::Down => Some(Action::FormNext),
         KeyCode::BackTab | KeyCode::Up => Some(Action::FormPrev),
         KeyCode::Left | KeyCode::Right => Some(Action::FormCycle),
-        KeyCode::Backspace => Some(Action::FormBackspace),
-        KeyCode::Char(c) => Some(Action::FormInput(c)),
+        KeyCode::Backspace | KeyCode::Delete => Some(Action::FormBackspace),
+        KeyCode::Char('h') if ctrl => Some(Action::FormBackspace),
+        KeyCode::Char(c) if !text_modifier => Some(Action::FormInput(c)),
         _ => None,
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+    use super::translate;
+    use crate::app::{App, Modal, PasswordPrompt};
+    use crate::event::Action;
+
+    fn app_with_password_modal() -> App {
+        let mut app = App::new();
+        app.modal = Some(Modal::Password(PasswordPrompt {
+            ssid: "test".into(),
+            input: String::new(),
+            error: None,
+        }));
+        app
+    }
+
+    fn key(code: KeyCode, modifiers: KeyModifiers) -> Event {
+        Event::Key(KeyEvent::new(code, modifiers))
+    }
+
+    #[test]
+    fn ctrl_h_in_text_modal_is_backspace() {
+        let app = app_with_password_modal();
+        let action = translate(&key(KeyCode::Char('h'), KeyModifiers::CONTROL), &app);
+        assert_eq!(action, Some(Action::FormBackspace));
+    }
+
+    #[test]
+    fn delete_in_text_modal_is_backspace() {
+        let app = app_with_password_modal();
+        let action = translate(&key(KeyCode::Delete, KeyModifiers::NONE), &app);
+        assert_eq!(action, Some(Action::FormBackspace));
+    }
+
+    #[test]
+    fn plain_h_in_text_modal_still_inserts_h() {
+        let app = app_with_password_modal();
+        let action = translate(&key(KeyCode::Char('h'), KeyModifiers::NONE), &app);
+        assert_eq!(action, Some(Action::FormInput('h')));
+    }
+}
 fn root_keys(key: &KeyEvent, app: &App) -> Option<Action> {
     // Global bindings first.
     if let Some(a) = global_keys(key) {

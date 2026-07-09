@@ -10,8 +10,8 @@ use tui_net_seting::parse::device::parse_devices;
 
 fn app_with_devices() -> App {
     let mut app = App::new();
-    let rows = parse_devices("eth0:ethernet:connected:Wired\nwlan0:wifi:disconnected:--\n")
-        .unwrap();
+    let rows =
+        parse_devices("eth0:ethernet:connected:Wired\nwlan0:wifi:disconnected:--\n").unwrap();
     let devices: Vec<Device> = rows.into_iter().map(Device::from).collect();
     app.on_msg(Msg::Devices(Ok(devices)));
     app
@@ -24,6 +24,13 @@ fn activation_error() -> AppError {
         stderr: "Error: Connection activation failed: Secrets were required".into(),
     })
 }
+fn passwd_file_password_error() -> AppError {
+    AppError::Nmcli(NmcliError::Failed {
+        exit: Some(NmExit::ActivationFailed),
+        code: 4,
+        stderr: "Warning: password for '802-11-wireless-security.psk' not given in 'passwd-file' and nmcli cannot ask without '--ask' option.".into(),
+    })
+}
 
 #[test]
 fn device_connect_starts_one_inflight_op() {
@@ -32,7 +39,10 @@ fn device_connect_starts_one_inflight_op() {
     assert!(app.in_flight.is_some());
     assert!(matches!(
         effects.as_slice(),
-        [Effect::Run { op: OpKind::DeviceConnect(_), .. }]
+        [Effect::Run {
+            op: OpKind::DeviceConnect(_),
+            ..
+        }]
     ));
 }
 
@@ -86,7 +96,10 @@ fn command_failure_shows_error_toast() {
         })),
     });
     assert!(app.in_flight.is_none());
-    assert_eq!(app.current_toast().map(|t| t.level), Some(ToastLevel::Error));
+    assert_eq!(
+        app.current_toast().map(|t| t.level),
+        Some(ToastLevel::Error)
+    );
 }
 
 #[test]
@@ -94,7 +107,9 @@ fn wrong_wifi_password_reopens_the_prompt() {
     let mut app = App::new();
     // Simulate an in-flight wifi connect whose password was wrong.
     app.on_msg(Msg::CommandDone {
-        op: OpKind::WifiConnect { ssid: "CafeWifi".into() },
+        op: OpKind::WifiConnect {
+            ssid: "CafeWifi".into(),
+        },
         result: Err(activation_error()),
     });
     match &app.modal {
@@ -107,6 +122,22 @@ fn wrong_wifi_password_reopens_the_prompt() {
     }
 }
 
+#[test]
+fn saved_wifi_missing_password_reopens_the_prompt() {
+    let mut app = App::new();
+    app.on_msg(Msg::CommandDone {
+        op: OpKind::ConnUp("CafeWifi".into()),
+        result: Err(passwd_file_password_error()),
+    });
+    match &app.modal {
+        Some(Modal::Password(p)) => {
+            assert_eq!(p.ssid, "CafeWifi");
+            assert!(p.error.is_some());
+            assert!(p.input.is_empty());
+        }
+        _ => panic!("expected the password modal to reopen"),
+    }
+}
 #[test]
 fn fatal_error_opens_blocking_modal() {
     let mut app = App::new();
@@ -155,6 +186,9 @@ fn delete_connection_flows_through_confirm() {
     let effects = app.apply(Action::ConfirmYes);
     assert!(matches!(
         effects.as_slice(),
-        [Effect::Run { op: OpKind::ConnDelete(_), .. }]
+        [Effect::Run {
+            op: OpKind::ConnDelete(_),
+            ..
+        }]
     ));
 }

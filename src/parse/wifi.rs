@@ -76,7 +76,13 @@ mod tests {
     #[test]
     fn bad_signal_is_a_typed_error() {
         let err = parse_wifi_list("*:x:bssid:strong:WPA2:1:54 Mbit/s\n").unwrap_err();
-        assert!(matches!(err, ParseError::BadValue { field: "SIGNAL", .. }));
+        assert!(matches!(
+            err,
+            ParseError::BadValue {
+                field: "SIGNAL",
+                ..
+            }
+        ));
     }
 
     #[test]

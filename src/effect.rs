@@ -18,10 +18,15 @@ pub enum Effect {
     LoadDeviceDetail(String),
     LoadConnections,
     LoadConnectionProfile(String),
-    LoadWifi { rescan: bool },
+    LoadWifi {
+        rescan: bool,
+    },
     LoadRadio,
     /// A mutating operation; its `OpKind` comes back in `Msg::CommandDone`.
-    Run { op: OpKind, args: Vec<String> },
+    Run {
+        op: OpKind,
+        args: Vec<String>,
+    },
     SpawnMonitor,
 }
 
@@ -37,13 +42,23 @@ pub fn run(effect: Effect, tx: Sender<Msg>) {
         Effect::LoadConnections => spawn_load(
             tx,
             cmd::args_connections(),
-            |raw| Ok(parse_connections(raw)?.into_iter().map(Connection::from).collect()),
+            |raw| {
+                Ok(parse_connections(raw)?
+                    .into_iter()
+                    .map(Connection::from)
+                    .collect())
+            },
             Msg::Connections,
         ),
         Effect::LoadWifi { rescan } => spawn_load(
             tx,
             cmd::args_wifi_list(rescan),
-            |raw| Ok(parse_wifi_list(raw)?.into_iter().map(WifiAp::from).collect()),
+            |raw| {
+                Ok(parse_wifi_list(raw)?
+                    .into_iter()
+                    .map(WifiAp::from)
+                    .collect())
+            },
             Msg::WifiAps,
         ),
         Effect::LoadDeviceDetail(device) => {

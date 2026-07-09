@@ -89,11 +89,20 @@ impl NmcliError {
     /// True when a Wi-Fi activation failed because secrets (password) were
     /// missing or wrong — the caller should re-prompt.
     pub fn is_bad_secrets(&self) -> bool {
-        matches!(
-            self,
-            Self::Failed { exit: Some(NmExit::ActivationFailed), stderr, .. }
-                if stderr.to_ascii_lowercase().contains("secrets")
-        )
+        match self {
+            Self::Failed {
+                exit: Some(NmExit::ActivationFailed),
+                stderr,
+                ..
+            } => {
+                let stderr = stderr.to_ascii_lowercase();
+                stderr.contains("secrets")
+                    || stderr.contains("password")
+                    || stderr.contains("psk")
+                    || stderr.contains("passwd-file")
+            }
+            _ => false,
+        }
     }
 }
 
@@ -102,7 +111,12 @@ fn failed_display(exit: &Option<NmExit>, code: i32, stderr: &str) -> String {
         Some(e) => e.describe().to_string(),
         None => format!("nmcli failed (exit code {code})"),
     };
-    match stderr.lines().next().map(str::trim).filter(|l| !l.is_empty()) {
+    match stderr
+        .lines()
+        .next()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+    {
         Some(line) => format!("{base}: {line}"),
         None => base,
     }
@@ -136,7 +150,11 @@ mod tests {
 
     #[test]
     fn unknown_code_falls_back_to_generic() {
-        let err = NmcliError::Failed { exit: None, code: 99, stderr: String::new() };
+        let err = NmcliError::Failed {
+            exit: None,
+            code: 99,
+            stderr: String::new(),
+        };
         assert_eq!(err.to_string(), "nmcli failed (exit code 99)");
     }
 
@@ -148,6 +166,14 @@ mod tests {
             stderr: "Error: Connection activation failed: Secrets were required".into(),
         };
         assert!(err.is_bad_secrets());
+        let passwd_file = NmcliError::Failed {
+            exit: Some(NmExit::ActivationFailed),
+            code: 4,
+            stderr:
+                "Warning: password for '802-11-wireless-security.psk' not given in 'passwd-file'"
+                    .into(),
+        };
+        assert!(passwd_file.is_bad_secrets());
         let other = NmcliError::Failed {
             exit: Some(NmExit::NotFound),
             code: 10,

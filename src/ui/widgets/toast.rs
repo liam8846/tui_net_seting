@@ -11,8 +11,5 @@ pub fn span(toast: &Toast) -> Span<'_> {
         ToastLevel::Success => (Color::Green, "✓"),
         ToastLevel::Error => (Color::Red, "✗"),
     };
-    Span::styled(
-        format!("{mark} {}", toast.text),
-        Style::default().fg(color),
-    )
+    Span::styled(format!("{mark} {}", toast.text), Style::default().fg(color))
 }

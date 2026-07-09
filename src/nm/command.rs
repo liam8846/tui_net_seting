@@ -51,7 +51,16 @@ pub fn args_connection_profile(uuid: &str) -> Vec<String> {
 
 pub fn args_wifi_list(rescan: bool) -> Vec<String> {
     let rescan = if rescan { "yes" } else { "no" };
-    base(&["-t", "-f", WIFI_FIELDS, "device", "wifi", "list", "--rescan", rescan])
+    base(&[
+        "-t",
+        "-f",
+        WIFI_FIELDS,
+        "device",
+        "wifi",
+        "list",
+        "--rescan",
+        rescan,
+    ])
 }
 
 pub fn args_networking_status() -> Vec<String> {
@@ -135,10 +144,18 @@ pub fn args_connection_add(draft: &ConnectionDraft) -> Vec<String> {
     v.push("con-name".into());
     v.push(draft.name.clone());
     v.push("ifname".into());
-    v.push(if draft.ifname.is_empty() { "*".into() } else { draft.ifname.clone() });
+    v.push(if draft.ifname.is_empty() {
+        "*".into()
+    } else {
+        draft.ifname.clone()
+    });
     if draft.ctype.is_wifi() {
         v.push("wifi.ssid".into());
-        v.push(if draft.ssid.is_empty() { draft.name.clone() } else { draft.ssid.clone() });
+        v.push(if draft.ssid.is_empty() {
+            draft.name.clone()
+        } else {
+            draft.ssid.clone()
+        });
     }
     push_settings(&mut v, draft);
     v
@@ -149,12 +166,24 @@ fn push_settings(v: &mut Vec<String>, draft: &ConnectionDraft) {
         ("connection.id", draft.name.clone()),
         ("connection.autoconnect", yes_no(draft.autoconnect).into()),
         ("ipv4.method", draft.ipv4.method.nmcli_value().into()),
-        ("ipv4.addresses", draft.ipv4.manual_or_empty(&draft.ipv4.addresses)),
-        ("ipv4.gateway", draft.ipv4.manual_or_empty(&draft.ipv4.gateway)),
+        (
+            "ipv4.addresses",
+            draft.ipv4.manual_or_empty(&draft.ipv4.addresses),
+        ),
+        (
+            "ipv4.gateway",
+            draft.ipv4.manual_or_empty(&draft.ipv4.gateway),
+        ),
         ("ipv4.dns", draft.ipv4.manual_or_empty(&draft.ipv4.dns)),
         ("ipv6.method", draft.ipv6.method.nmcli_value().into()),
-        ("ipv6.addresses", draft.ipv6.manual_or_empty(&draft.ipv6.addresses)),
-        ("ipv6.gateway", draft.ipv6.manual_or_empty(&draft.ipv6.gateway)),
+        (
+            "ipv6.addresses",
+            draft.ipv6.manual_or_empty(&draft.ipv6.addresses),
+        ),
+        (
+            "ipv6.gateway",
+            draft.ipv6.manual_or_empty(&draft.ipv6.gateway),
+        ),
         ("ipv6.dns", draft.ipv6.manual_or_empty(&draft.ipv6.dns)),
     ];
     for (key, value) in pairs {
@@ -211,7 +240,15 @@ mod tests {
     fn device_status_argv_is_pinned() {
         assert_eq!(
             args_device_status(),
-            ["--color", "no", "-t", "-f", DEVICE_FIELDS, "device", "status"]
+            [
+                "--color",
+                "no",
+                "-t",
+                "-f",
+                DEVICE_FIELDS,
+                "device",
+                "status"
+            ]
         );
     }
 
@@ -219,12 +256,16 @@ mod tests {
     fn wifi_connect_with_and_without_password() {
         assert_eq!(
             args_wifi_connect("CafeWifi", Some("hunter22")),
-            ["--color", "no", "-w", "20", "device", "wifi", "connect", "CafeWifi",
-             "password", "hunter22"]
+            [
+                "--color", "no", "-w", "20", "device", "wifi", "connect", "CafeWifi", "password",
+                "hunter22"
+            ]
         );
         assert_eq!(
             args_wifi_connect("Open Net", None),
-            ["--color", "no", "-w", "20", "device", "wifi", "connect", "Open Net"]
+            [
+                "--color", "no", "-w", "20", "device", "wifi", "connect", "Open Net"
+            ]
         );
     }
 
@@ -232,8 +273,21 @@ mod tests {
     fn hotspot_argv() {
         assert_eq!(
             args_hotspot("wlan0", "MySpot", "password1"),
-            ["--color", "no", "-w", "20", "device", "wifi", "hotspot", "ifname",
-             "wlan0", "ssid", "MySpot", "password", "password1"]
+            [
+                "--color",
+                "no",
+                "-w",
+                "20",
+                "device",
+                "wifi",
+                "hotspot",
+                "ifname",
+                "wlan0",
+                "ssid",
+                "MySpot",
+                "password",
+                "password1"
+            ]
         );
     }
 

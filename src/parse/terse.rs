@@ -76,13 +76,21 @@ pub fn split_fields<'a, const N: usize>(
                 got += 1;
             }
             None => {
-                return Err(ParseError::ColumnCount { line_no, expected: N, got });
+                return Err(ParseError::ColumnCount {
+                    line_no,
+                    expected: N,
+                    got,
+                });
             }
         }
     }
     let extra = it.count();
     if extra > 0 {
-        return Err(ParseError::ColumnCount { line_no, expected: N, got: got + extra });
+        return Err(ParseError::ColumnCount {
+            line_no,
+            expected: N,
+            got: got + extra,
+        });
     }
     Ok(out)
 }
@@ -136,10 +144,21 @@ mod tests {
         let err = split_fields::<3>("a:b", 7).unwrap_err();
         assert!(matches!(
             err,
-            ParseError::ColumnCount { line_no: 7, expected: 3, got: 2 }
+            ParseError::ColumnCount {
+                line_no: 7,
+                expected: 3,
+                got: 2
+            }
         ));
         let err = split_fields::<1>("a:b", 1).unwrap_err();
-        assert!(matches!(err, ParseError::ColumnCount { expected: 1, got: 2, .. }));
+        assert!(matches!(
+            err,
+            ParseError::ColumnCount {
+                expected: 1,
+                got: 2,
+                ..
+            }
+        ));
     }
 
     #[test]

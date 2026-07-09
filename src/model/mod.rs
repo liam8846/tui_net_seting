@@ -7,8 +7,8 @@ pub mod device;
 pub mod wifi;
 
 pub use connection::{
-    Connection, ConnectionDraft, ConnectionType, IpDraft, IpMethod,
-    validate_cidr, validate_ip, validate_wifi_password,
+    Connection, ConnectionDraft, ConnectionType, IpDraft, IpMethod, validate_cidr, validate_ip,
+    validate_wifi_password,
 };
 pub use device::{Device, DeviceState, DeviceType};
 pub use wifi::{RadioState, WifiAp};

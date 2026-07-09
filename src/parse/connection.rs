@@ -3,8 +3,8 @@
 
 use std::borrow::Cow;
 
-use crate::parse::error::ParseError;
 use crate::parse::device::none_if_dash;
+use crate::parse::error::ParseError;
 use crate::parse::terse::{split_fields, unescape};
 
 #[derive(Debug)]
@@ -22,8 +22,7 @@ pub fn parse_connections(raw: &str) -> Result<Vec<ConnectionRow<'_>>, ParseError
         .enumerate()
         .filter(|(_, line)| !line.is_empty())
         .map(|(i, line)| {
-            let [name, uuid, ctype, device, active, autoconnect] =
-                split_fields::<6>(line, i + 1)?;
+            let [name, uuid, ctype, device, active, autoconnect] = split_fields::<6>(line, i + 1)?;
             Ok(ConnectionRow {
                 name,
                 uuid,
@@ -57,9 +56,7 @@ const PROFILE_LINES: usize = 11;
 pub fn parse_profile(raw: &str) -> Result<ProfileRow<'_>, ParseError> {
     let mut lines = raw.lines();
     // Missing trailing lines (empty last values) are padded with "".
-    let mut field = |_name: &'static str| {
-        lines.next().map(unescape).unwrap_or(Cow::Borrowed(""))
-    };
+    let mut field = |_name: &'static str| lines.next().map(unescape).unwrap_or(Cow::Borrowed(""));
     let name = field("connection.id");
     let autoconnect = field("connection.autoconnect");
     let ctype = field("connection.type");

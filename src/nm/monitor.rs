@@ -48,9 +48,10 @@ async fn run_monitor(tx: &Sender<Msg>) -> std::io::Result<()> {
         .kill_on_drop(true)
         .spawn()?;
 
-    let stdout = child.stdout.take().ok_or_else(|| {
-        std::io::Error::other("nmcli monitor stdout not captured")
-    })?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| std::io::Error::other("nmcli monitor stdout not captured"))?;
     let _ = tx.send(Msg::MonitorUp).await;
 
     let mut lines = BufReader::new(stdout).lines();

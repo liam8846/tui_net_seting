@@ -1084,6 +1084,13 @@ impl App {
                     error: Some(text),
                 }));
             }
+            (_, OpKind::ConnUp(name)) if e.is_bad_secrets() => {
+                self.modal = Some(Modal::Password(PasswordPrompt {
+                    ssid: name.clone(),
+                    input: String::new(),
+                    error: Some(text),
+                }));
+            }
             // Keep edit forms open so the user's input isn't lost.
             (Some(Modal::ConnForm(f)), OpKind::ConnSave(_)) => f.error = Some(text),
             (Some(Modal::HotspotForm(f)), OpKind::HotspotUp) => f.error = Some(text),

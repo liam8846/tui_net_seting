@@ -33,7 +33,11 @@ pub fn parse_devices(raw: &str) -> Result<Vec<DeviceRow<'_>>, ParseError> {
 
 /// `--` placeholders become `None`.
 pub fn none_if_dash(value: Cow<'_, str>) -> Option<Cow<'_, str>> {
-    if value == "--" || value.is_empty() { None } else { Some(value) }
+    if value == "--" || value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 pub struct KvLine<'a> {
@@ -44,9 +48,9 @@ pub struct KvLine<'a> {
 /// Borrowing iterator over `KEY:VALUE` lines (`device show` output). Used at
 /// draw time straight from the stored raw buffer — fully zero-copy.
 pub fn parse_kv_lines(raw: &str) -> impl Iterator<Item = KvLine<'_>> {
-    raw.lines().filter(|l| !l.is_empty()).filter_map(|line| {
-        split_kv(line).map(|(key, value)| KvLine { key, value })
-    })
+    raw.lines()
+        .filter(|l| !l.is_empty())
+        .filter_map(|line| split_kv(line).map(|(key, value)| KvLine { key, value }))
 }
 
 #[cfg(test)]
