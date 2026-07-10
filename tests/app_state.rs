@@ -1,10 +1,12 @@
 //! Pure state-machine tests for `App`. No terminal, no nmcli — just feed
 //! Actions/Msgs and assert on the resulting state and effects.
 
-use tui_net_seting::app::{App, DetailPane, Modal, ToastLevel};
+use tui_net_seting::app::{App, ConnField, DetailPane, Modal, ToastLevel};
 use tui_net_seting::effect::Effect;
 use tui_net_seting::event::{Action, AppError, Msg, OpKind, Tab};
-use tui_net_seting::model::{Connection, ConnectionType, Device, DeviceState, DeviceType, WifiAp};
+use tui_net_seting::model::{
+    Connection, ConnectionType, Device, DeviceState, DeviceType, IpMethod, RadioState, WifiAp,
+};
 use tui_net_seting::nm::{NmExit, NmcliError};
 use tui_net_seting::parse::device::parse_devices;
 
@@ -62,6 +64,20 @@ fn connection(name: &str, uuid: &str, ctype: ConnectionType) -> Connection {
         active: false,
         autoconnect: true,
     }
+}
+
+fn app_with_manual_ipv4_address_focus() -> App {
+    let mut app = App::new();
+    app.apply(Action::ConnAdd);
+    match &mut app.modal {
+        Some(Modal::ConnForm(form)) => {
+            form.draft.name = "測試連線".into();
+            form.draft.ipv4.method = IpMethod::Manual;
+            form.focus = 5;
+        }
+        _ => panic!("expected connection form"),
+    }
+    app
 }
 
 #[test]
@@ -255,6 +271,25 @@ fn device_refresh_keeps_selection_by_name_and_falls_back_when_missing() {
 }
 
 #[test]
+fn empty_state_distinguishes_loading_from_loaded_empty_lists() {
+    let mut app = App::new();
+    app.initial_effects();
+    assert!(app.loading.devices && app.loading.connections && app.loading.wifi);
+    assert!(app.devices.is_empty() && app.connections.is_empty() && app.wifi.is_empty());
+
+    app.on_msg(Msg::Devices(Ok(Vec::new())));
+    app.on_msg(Msg::Connections(Ok(Vec::new())));
+    app.on_msg(Msg::WifiAps(Ok(Vec::new())));
+    app.on_msg(Msg::Radio(Ok(RadioState {
+        networking: true,
+        wifi: false,
+    })));
+
+    assert!(!app.loading.devices && !app.loading.connections && !app.loading.wifi);
+    assert!(app.radio.is_some_and(|radio| !radio.wifi));
+}
+
+#[test]
 fn connection_and_wifi_refresh_use_uuid_and_bssid_identity() {
     let mut app = App::new();
     app.on_msg(Msg::Connections(Ok(vec![
@@ -415,4 +450,124 @@ fn detail_and_help_scroll_are_stateful_and_reset_when_closed() {
     app.apply(Action::ModalCancel);
     assert!(app.modal.is_none());
     assert_eq!(app.help_scroll, 0);
+}
+
+#[test]
+fn invalid_ip_field_error_appears_while_typing() {
+    let mut app = app_with_manual_ipv4_address_focus();
+    for c in "bad".chars() {
+        app.apply(Action::FormInput(c));
+    }
+
+    match &app.modal {
+        Some(Modal::ConnForm(form)) => {
+            assert!(form.field_error(ConnField::V4Addresses).is_some());
+        }
+        _ => panic!("expected connection form"),
+    }
+}
+
+#[test]
+fn correcting_ip_clears_its_field_error() {
+    let mut app = app_with_manual_ipv4_address_focus();
+    for c in "bad".chars() {
+        app.apply(Action::FormInput(c));
+    }
+    for _ in 0..3 {
+        app.apply(Action::FormBackspace);
+    }
+    for c in "192.0.2.10/24".chars() {
+        app.apply(Action::FormInput(c));
+    }
+
+    match &app.modal {
+        Some(Modal::ConnForm(form)) => {
+            assert!(form.field_error(ConnField::V4Addresses).is_none());
+        }
+        _ => panic!("expected connection form"),
+    }
+}
+
+#[test]
+fn connection_submit_is_blocked_by_invalid_field() {
+    let mut app = app_with_manual_ipv4_address_focus();
+    for c in "bad".chars() {
+        app.apply(Action::FormInput(c));
+    }
+
+    let effects = app.apply(Action::FormSubmit);
+
+    assert!(effects.is_empty());
+    match &app.modal {
+        Some(Modal::ConnForm(form)) => {
+            assert!(form.field_error(ConnField::V4Addresses).is_some());
+            assert!(form.error.is_some());
+        }
+        _ => panic!("expected connection form to remain open"),
+    }
+}
+
+#[test]
+fn hotspot_password_error_updates_while_typing() {
+    let mut app = app_with_devices();
+    app.apply(Action::HotspotCreate);
+    if let Some(Modal::HotspotForm(form)) = &mut app.modal {
+        form.focus = 2;
+    }
+    for c in "short".chars() {
+        app.apply(Action::FormInput(c));
+    }
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::HotspotForm(form)) if form.password_error.is_some()
+    ));
+
+    for c in "123".chars() {
+        app.apply(Action::FormInput(c));
+    }
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::HotspotForm(form)) if form.password_error.is_none()
+    ));
+}
+
+#[test]
+fn password_prompt_visibility_toggles_and_new_prompt_is_masked() {
+    let mut app = App::new();
+    let mut ap = wifi_ap("安全網路", "AA", 80, false);
+    ap.security = "WPA2".into();
+    app.on_msg(Msg::WifiAps(Ok(vec![ap])));
+    app.apply(Action::GotoTab(Tab::Wifi));
+    app.apply(Action::WifiConnect);
+
+    app.apply(Action::TogglePasswordVisibility);
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::Password(prompt)) if prompt.show_password
+    ));
+
+    app.apply(Action::ModalCancel);
+    app.apply(Action::WifiConnect);
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::Password(prompt)) if !prompt.show_password
+    ));
+}
+
+#[test]
+fn hotspot_visibility_toggles_and_new_form_is_masked() {
+    let mut app = app_with_devices();
+    app.apply(Action::HotspotCreate);
+    app.apply(Action::TogglePasswordVisibility);
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::HotspotForm(form)) if form.show_password
+    ));
+
+    app.apply(Action::ModalCancel);
+    app.apply(Action::HotspotCreate);
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::HotspotForm(form)) if !form.show_password
+    ));
 }

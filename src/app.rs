@@ -12,7 +12,8 @@ use crate::effect::Effect;
 use crate::event::{Action, AppError, Msg, OpKind, Tab};
 use crate::model::{
     Connection, ConnectionDraft, ConnectionType, Device, DeviceState, DeviceType, IpMethod,
-    RadioState, WifiAp, validate_wifi_password,
+    RadioState, WifiAp, validate_address_field, validate_dns_field, validate_gateway_field,
+    validate_wifi_password,
 };
 use crate::nm::command as cmd;
 
@@ -234,10 +235,11 @@ pub enum Confirmed {
 pub struct PasswordPrompt {
     pub ssid: String,
     pub input: String,
+    pub show_password: bool,
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConnField {
     Name,
     Type,
@@ -287,6 +289,7 @@ pub struct ConnForm {
     pub draft: ConnectionDraft,
     /// Index into [`ConnForm::editable`].
     pub focus: usize,
+    field_errors: Vec<(ConnField, String)>,
     pub error: Option<String>,
 }
 
@@ -295,6 +298,7 @@ impl ConnForm {
         Self {
             draft: ConnectionDraft::new_ethernet(),
             focus: 0,
+            field_errors: Vec::new(),
             error: None,
         }
     }
@@ -303,6 +307,7 @@ impl ConnForm {
         Self {
             draft,
             focus: 0,
+            field_errors: Vec::new(),
             error: None,
         }
     }
@@ -346,10 +351,12 @@ impl ConnForm {
     }
 
     pub fn next(&mut self) {
+        self.validate_current_field();
         self.focus = (self.focus + 1) % self.editable().len();
     }
 
     pub fn prev(&mut self) {
+        self.validate_current_field();
         let len = self.editable().len();
         self.focus = (self.focus + len - 1) % len;
     }
@@ -397,6 +404,8 @@ impl ConnForm {
         let field = self.focused();
         if let Some(text) = self.text_mut(field) {
             text.push(c);
+            self.error = None;
+            self.validate_field(field);
         } else if c == ' ' {
             self.cycle();
         }
@@ -406,10 +415,13 @@ impl ConnForm {
         let field = self.focused();
         if let Some(text) = self.text_mut(field) {
             text.pop();
+            self.error = None;
+            self.validate_field(field);
         }
     }
 
     pub fn cycle(&mut self) {
+        self.error = None;
         match self.focused() {
             ConnField::Type => {
                 self.draft.ctype = if self.draft.ctype.is_wifi() {
@@ -423,7 +435,86 @@ impl ConnForm {
             ConnField::V6Method => self.draft.ipv6.method = self.draft.ipv6.method.cycle(),
             _ => {}
         }
+        self.clear_disabled_field_errors();
         self.clamp();
+    }
+
+    pub fn field_error(&self, field: ConnField) -> Option<&str> {
+        self.field_errors
+            .iter()
+            .find(|(candidate, _)| *candidate == field)
+            .map(|(_, error)| error.as_str())
+    }
+
+    fn set_field_error(&mut self, field: ConnField, error: Option<String>) {
+        self.field_errors
+            .retain(|(candidate, _)| *candidate != field);
+        if let Some(error) = error {
+            self.field_errors.push((field, error));
+        }
+    }
+
+    fn validate_current_field(&mut self) {
+        self.validate_field(self.focused());
+    }
+
+    fn validate_field(&mut self, field: ConnField) {
+        let result = match field {
+            ConnField::V4Addresses if self.draft.ipv4.method == IpMethod::Manual => {
+                validate_address_field(&self.draft.ipv4.addresses, false)
+            }
+            ConnField::V4Gateway if self.draft.ipv4.method == IpMethod::Manual => {
+                validate_gateway_field(&self.draft.ipv4.gateway, false)
+            }
+            ConnField::V4Dns if self.draft.ipv4.method == IpMethod::Manual => {
+                validate_dns_field(&self.draft.ipv4.dns, false)
+            }
+            ConnField::V6Addresses if self.draft.ipv6.method == IpMethod::Manual => {
+                validate_address_field(&self.draft.ipv6.addresses, true)
+            }
+            ConnField::V6Gateway if self.draft.ipv6.method == IpMethod::Manual => {
+                validate_gateway_field(&self.draft.ipv6.gateway, true)
+            }
+            ConnField::V6Dns if self.draft.ipv6.method == IpMethod::Manual => {
+                validate_dns_field(&self.draft.ipv6.dns, true)
+            }
+            _ => Ok(()),
+        };
+        self.set_field_error(field, result.err());
+    }
+
+    fn clear_disabled_field_errors(&mut self) {
+        if self.draft.ipv4.method != IpMethod::Manual {
+            for field in [
+                ConnField::V4Addresses,
+                ConnField::V4Gateway,
+                ConnField::V4Dns,
+            ] {
+                self.set_field_error(field, None);
+            }
+        }
+        if self.draft.ipv6.method != IpMethod::Manual {
+            for field in [
+                ConnField::V6Addresses,
+                ConnField::V6Gateway,
+                ConnField::V6Dns,
+            ] {
+                self.set_field_error(field, None);
+            }
+        }
+    }
+
+    fn validate_all_fields(&mut self) {
+        for field in [
+            ConnField::V4Addresses,
+            ConnField::V4Gateway,
+            ConnField::V4Dns,
+            ConnField::V6Addresses,
+            ConnField::V6Gateway,
+            ConnField::V6Dns,
+        ] {
+            self.validate_field(field);
+        }
     }
 }
 
@@ -433,8 +524,10 @@ pub struct HotspotForm {
     pub ifname_idx: usize,
     pub ssid: String,
     pub password: String,
+    pub show_password: bool,
     /// 0 = interface, 1 = SSID, 2 = password.
     pub focus: usize,
+    pub password_error: Option<String>,
     pub error: Option<String>,
 }
 
@@ -445,7 +538,9 @@ impl HotspotForm {
             ifname_idx: 0,
             ssid: HOTSPOT_NAME.to_string(),
             password: String::new(),
+            show_password: false,
             focus: 0,
+            password_error: None,
             error: None,
         }
     }
@@ -460,8 +555,15 @@ impl HotspotForm {
     pub fn insert(&mut self, c: char) {
         match self.focus {
             0 if c == ' ' => self.cycle(),
-            1 => self.ssid.push(c),
-            2 => self.password.push(c),
+            1 => {
+                self.ssid.push(c);
+                self.error = None;
+            }
+            2 => {
+                self.password.push(c);
+                self.error = None;
+                self.validate_password_field();
+            }
             _ => {}
         }
     }
@@ -470,9 +572,12 @@ impl HotspotForm {
         match self.focus {
             1 => {
                 self.ssid.pop();
+                self.error = None;
             }
             2 => {
                 self.password.pop();
+                self.error = None;
+                self.validate_password_field();
             }
             _ => {}
         }
@@ -485,11 +590,23 @@ impl HotspotForm {
     }
 
     pub fn next(&mut self) {
+        self.validate_current_field();
         self.focus = (self.focus + 1) % 3;
     }
 
     pub fn prev(&mut self) {
+        self.validate_current_field();
         self.focus = (self.focus + 2) % 3;
+    }
+
+    fn validate_current_field(&mut self) {
+        if self.focus == 2 {
+            self.validate_password_field();
+        }
+    }
+
+    fn validate_password_field(&mut self) {
+        self.password_error = validate_wifi_password(&self.password).err();
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -964,6 +1081,7 @@ impl App {
             self.modal = Some(Modal::Password(PasswordPrompt {
                 ssid,
                 input: String::new(),
+                show_password: false,
                 error: None,
             }));
         } else {
@@ -1039,16 +1157,25 @@ impl App {
                 Some(Modal::HotspotForm(f)) => f.cycle(),
                 _ => {}
             },
+            Action::TogglePasswordVisibility => match &mut self.modal {
+                Some(Modal::Password(p)) => p.show_password = !p.show_password,
+                Some(Modal::HotspotForm(f)) => f.show_password = !f.show_password,
+                _ => {}
+            },
             Action::FormBackspace => match &mut self.modal {
                 Some(Modal::Password(p)) => {
                     p.input.pop();
+                    p.error = None;
                 }
                 Some(Modal::ConnForm(f)) => f.backspace(),
                 Some(Modal::HotspotForm(f)) => f.backspace(),
                 _ => {}
             },
             Action::FormInput(c) => match &mut self.modal {
-                Some(Modal::Password(p)) => p.input.push(c),
+                Some(Modal::Password(p)) => {
+                    p.input.push(c);
+                    p.error = None;
+                }
                 Some(Modal::ConnForm(f)) => f.insert(c),
                 Some(Modal::HotspotForm(f)) => f.insert(c),
                 _ => {}
@@ -1119,6 +1246,7 @@ impl App {
                 );
             }
             Some(Modal::ConnForm(f)) => {
+                f.validate_all_fields();
                 if let Err(e) = f.draft.validate() {
                     f.error = Some(e);
                     return;
@@ -1132,6 +1260,7 @@ impl App {
                 self.start_op(OpKind::ConnSave(draft.name.clone()), args, effects);
             }
             Some(Modal::HotspotForm(f)) => {
+                f.validate_password_field();
                 if let Err(e) = f.validate() {
                     f.error = Some(e);
                     return;
@@ -1263,6 +1392,7 @@ impl App {
                 self.modal = Some(Modal::Password(PasswordPrompt {
                     ssid: ssid.clone(),
                     input: String::new(),
+                    show_password: false,
                     error: Some(text),
                 }));
             }
@@ -1270,6 +1400,7 @@ impl App {
                 self.modal = Some(Modal::Password(PasswordPrompt {
                     ssid: name.clone(),
                     input: String::new(),
+                    show_password: false,
                     error: Some(text),
                 }));
             }

@@ -21,10 +21,19 @@ pub fn translate(event: &crossterm::event::Event, app: &App) -> Option<Action> {
         Some(Modal::Help) => help_keys(key),
         Some(Modal::Error(_)) => error_keys(key),
         Some(Modal::Confirm { .. }) => confirm_keys(key),
-        Some(Modal::Password(_)) => text_modal_keys(key),
+        Some(Modal::Password(_)) => password_modal_keys(key),
         Some(Modal::ConnForm(_)) => text_modal_keys(key),
-        Some(Modal::HotspotForm(_)) => text_modal_keys(key),
+        Some(Modal::HotspotForm(_)) => password_modal_keys(key),
         None => root_keys(key, app),
+    }
+}
+
+fn password_modal_keys(key: &KeyEvent) -> Option<Action> {
+    if key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('r' | 'R'))
+    {
+        Some(Action::TogglePasswordVisibility)
+    } else {
+        text_modal_keys(key)
     }
 }
 
@@ -73,49 +82,6 @@ fn text_modal_keys(key: &KeyEvent) -> Option<Action> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-
-    use super::translate;
-    use crate::app::{App, Modal, PasswordPrompt};
-    use crate::event::Action;
-
-    fn app_with_password_modal() -> App {
-        let mut app = App::new();
-        app.modal = Some(Modal::Password(PasswordPrompt {
-            ssid: "test".into(),
-            input: String::new(),
-            error: None,
-        }));
-        app
-    }
-
-    fn key(code: KeyCode, modifiers: KeyModifiers) -> Event {
-        Event::Key(KeyEvent::new(code, modifiers))
-    }
-
-    #[test]
-    fn ctrl_h_in_text_modal_is_backspace() {
-        let app = app_with_password_modal();
-        let action = translate(&key(KeyCode::Char('h'), KeyModifiers::CONTROL), &app);
-        assert_eq!(action, Some(Action::FormBackspace));
-    }
-
-    #[test]
-    fn delete_in_text_modal_is_backspace() {
-        let app = app_with_password_modal();
-        let action = translate(&key(KeyCode::Delete, KeyModifiers::NONE), &app);
-        assert_eq!(action, Some(Action::FormBackspace));
-    }
-
-    #[test]
-    fn plain_h_in_text_modal_still_inserts_h() {
-        let app = app_with_password_modal();
-        let action = translate(&key(KeyCode::Char('h'), KeyModifiers::NONE), &app);
-        assert_eq!(action, Some(Action::FormInput('h')));
-    }
-}
 fn root_keys(key: &KeyEvent, app: &App) -> Option<Action> {
     if app.tab == Tab::Wifi && app.wifi_filter.editing {
         return wifi_filter_keys(key);
@@ -200,8 +166,8 @@ fn wifi_filter_keys(key: &KeyEvent) -> Option<Action> {
         KeyCode::Esc => Some(Action::WifiFilterClear),
         KeyCode::Enter => Some(Action::WifiFilterAccept),
         KeyCode::Backspace | KeyCode::Delete => Some(Action::WifiFilterBackspace),
-        KeyCode::Up | KeyCode::Char('k') => Some(Action::Up),
-        KeyCode::Down | KeyCode::Char('j') => Some(Action::Down),
+        KeyCode::Up => Some(Action::Up),
+        KeyCode::Down => Some(Action::Down),
         KeyCode::Home => Some(Action::First),
         KeyCode::End => Some(Action::Last),
         KeyCode::PageUp => Some(Action::PageUp),
@@ -234,7 +200,8 @@ pub fn hints(app: &App) -> &'static [(&'static str, &'static str)] {
     if app.tab == Tab::Wifi && app.wifi_filter.editing {
         return &[
             ("輸入", "篩選 SSID"),
-            ("↑↓", "移動"),
+            ("方向鍵", "移動"),
+            ("Home/End/Pg", "導覽"),
             ("Enter", "保留"),
             ("Esc", "清除"),
         ];
@@ -276,7 +243,7 @@ pub fn hints(app: &App) -> &'static [(&'static str, &'static str)] {
 pub fn help_lines() -> Vec<(&'static str, &'static str)> {
     vec![
         ("1-5 / Tab", "切換分頁"),
-        ("j / k / ↑ / ↓", "移動選取"),
+        ("j / k / ↑ / ↓", "移動選取（篩選編輯中僅使用方向鍵）"),
         ("g / G / Home / End", "跳到第一項 / 最後一項"),
         ("PageUp / PageDown", "一次移動 10 項"),
         ("r", "重新整理（Wi-Fi 會重新掃描）"),
@@ -294,7 +261,11 @@ pub fn help_lines() -> Vec<(&'static str, &'static str)> {
         ("連線 - x / Del", "刪除設定檔"),
         ("Wi-Fi - Enter", "連接（需要時詢問密碼）"),
         ("Wi-Fi - d / f", "中斷 / 忘記"),
-        ("Wi-Fi - /", "依 SSID 增量篩選（Enter 保留，Esc 清除）"),
+        ("Wi-Fi - /", "依 SSID 增量篩選（所有可列印字元皆為輸入）"),
+        (
+            "Wi-Fi 篩選",
+            "方向/Home/End/PageUp/PageDown 導覽；Enter 保留，Esc 清除",
+        ),
         ("Wi-Fi - ★", "代表已有同名的已儲存 Wi-Fi 設定檔"),
         ("說明 - J / K", "向下 / 向上捲動"),
         ("熱點 - a / x", "建立 / 停止熱點"),
@@ -302,6 +273,70 @@ pub fn help_lines() -> Vec<(&'static str, &'static str)> {
         ("", ""),
         ("表單 - Tab/↑↓", "在欄位間移動"),
         ("表單 - ←/→/Space", "切換選項欄位"),
+        ("密碼 - Ctrl-R", "顯示 / 隱藏密碼"),
         ("表單 - Enter", "送出"),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+    use super::translate;
+    use crate::app::{App, Modal, PasswordPrompt};
+    use crate::event::Action;
+
+    fn app_with_password_modal() -> App {
+        let mut app = App::new();
+        app.modal = Some(Modal::Password(PasswordPrompt {
+            ssid: "test".into(),
+            input: String::new(),
+            show_password: false,
+            error: None,
+        }));
+        app
+    }
+
+    fn key(code: KeyCode, modifiers: KeyModifiers) -> Event {
+        Event::Key(KeyEvent::new(code, modifiers))
+    }
+
+    #[test]
+    fn ctrl_h_in_text_modal_is_backspace() {
+        let app = app_with_password_modal();
+        let action = translate(&key(KeyCode::Char('h'), KeyModifiers::CONTROL), &app);
+        assert_eq!(action, Some(Action::FormBackspace));
+    }
+
+    #[test]
+    fn delete_in_text_modal_is_backspace() {
+        let app = app_with_password_modal();
+        let action = translate(&key(KeyCode::Delete, KeyModifiers::NONE), &app);
+        assert_eq!(action, Some(Action::FormBackspace));
+    }
+
+    #[test]
+    fn plain_h_in_text_modal_still_inserts_h() {
+        let app = app_with_password_modal();
+        let action = translate(&key(KeyCode::Char('h'), KeyModifiers::NONE), &app);
+        assert_eq!(action, Some(Action::FormInput('h')));
+    }
+
+    #[test]
+    fn ctrl_r_in_password_modal_toggles_visibility() {
+        let app = app_with_password_modal();
+        let action = translate(&key(KeyCode::Char('r'), KeyModifiers::CONTROL), &app);
+        assert_eq!(action, Some(Action::TogglePasswordVisibility));
+    }
+
+    #[test]
+    fn plain_j_in_wifi_filter_is_filter_input() {
+        let mut app = App::new();
+        app.tab = crate::event::Tab::Wifi;
+        app.wifi_filter.editing = true;
+
+        let action = translate(&key(KeyCode::Char('j'), KeyModifiers::NONE), &app);
+
+        assert_eq!(action, Some(Action::WifiFilterInput('j')));
+    }
 }

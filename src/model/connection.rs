@@ -230,6 +230,41 @@ fn split_list(s: &str) -> impl Iterator<Item = &str> {
     s.split(',').map(str::trim).filter(|p| !p.is_empty())
 }
 
+/// Validate the address-list field used by a manual IP configuration.
+pub fn validate_address_field(value: &str, v6: bool) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err("手動方式需要至少一個位址".into());
+    }
+    for address in split_list(value) {
+        validate_cidr(address, v6).map_err(|_| {
+            if v6 {
+                "位址需為 CIDR，如 2001:db8::10/64".to_string()
+            } else {
+                "位址需為 CIDR，如 192.0.2.10/24".to_string()
+            }
+        })?;
+    }
+    Ok(())
+}
+
+/// Validate an optional gateway field. Empty means no explicit gateway.
+pub fn validate_gateway_field(value: &str, v6: bool) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Ok(());
+    }
+    validate_ip(value.trim(), v6)
+        .map_err(|_| format!("閘道需為有效的 {} 位址", if v6 { "IPv6" } else { "IPv4" }))
+}
+
+/// Validate an optional comma-separated DNS server list.
+pub fn validate_dns_field(value: &str, v6: bool) -> Result<(), String> {
+    for dns in split_list(value) {
+        validate_ip(dns, v6)
+            .map_err(|_| format!("DNS 需為有效的 {} 位址", if v6 { "IPv6" } else { "IPv4" }))?;
+    }
+    Ok(())
+}
+
 pub fn validate_ip(s: &str, v6: bool) -> Result<(), String> {
     match IpAddr::from_str(s) {
         Ok(IpAddr::V4(_)) if !v6 => Ok(()),
@@ -299,5 +334,12 @@ mod tests {
         assert!(validate_wifi_password("hunter22").is_ok());
         assert!(validate_wifi_password("short").is_err());
         assert!(validate_wifi_password(&"x".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn field_validation_allows_empty_optional_values() {
+        assert!(validate_gateway_field("", false).is_ok());
+        assert!(validate_dns_field("", true).is_ok());
+        assert!(validate_address_field("", false).is_err());
     }
 }

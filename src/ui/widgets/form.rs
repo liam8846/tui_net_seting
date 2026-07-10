@@ -22,6 +22,7 @@ fn field_line(
     focused: bool,
     enabled: bool,
     choice: bool,
+    error: Option<&str>,
 ) -> Line<'static> {
     let marker = if focused { "› " } else { "  " };
     let shown = if choice {
@@ -36,14 +37,21 @@ fn field_line(
     } else {
         Style::default().fg(Color::White)
     };
-    Line::from(vec![
+    let mut spans = vec![
         Span::styled(marker, Style::default().fg(Color::Cyan)),
         Span::styled(
             format!("{label:<LABEL_WIDTH$}"),
             Style::default().fg(Color::Gray),
         ),
         Span::styled(shown, value_style),
-    ])
+    ];
+    if let Some(error) = error {
+        spans.push(Span::styled(
+            format!("  ✗ {error}"),
+            Style::default().fg(Color::Red),
+        ));
+    }
+    Line::from(spans)
 }
 
 pub fn render_connection(frame: &mut Frame, form: &ConnForm) {
@@ -72,6 +80,7 @@ pub fn render_connection(frame: &mut Frame, form: &ConnForm) {
                 *field == focused_field,
                 *enabled,
                 choice,
+                form.field_error(*field),
             )
         })
         .collect();
@@ -83,21 +92,39 @@ pub fn render_connection(frame: &mut Frame, form: &ConnForm) {
             Style::default().fg(Color::Red),
         )));
     }
-    lines.push(hint_line());
+    lines.push(connection_hint_line());
 
     render_modal(frame, &title, lines);
 }
 
 pub fn render_hotspot(frame: &mut Frame, form: &HotspotForm) {
-    let masked = "•".repeat(form.password.chars().count());
+    let password = if form.show_password {
+        form.password.clone()
+    } else {
+        "•".repeat(form.password.chars().count())
+    };
     let fields = [
-        ("介面", form.ifname().to_string(), form.focus == 0, true),
-        ("SSID", form.ssid.clone(), form.focus == 1, false),
-        ("密碼", masked, form.focus == 2, false),
+        (
+            "介面",
+            form.ifname().to_string(),
+            form.focus == 0,
+            true,
+            None,
+        ),
+        ("SSID", form.ssid.clone(), form.focus == 1, false, None),
+        (
+            "密碼",
+            password,
+            form.focus == 2,
+            false,
+            form.password_error.as_deref(),
+        ),
     ];
     let mut lines: Vec<Line> = fields
         .iter()
-        .map(|(label, value, focused, choice)| field_line(label, value, *focused, true, *choice))
+        .map(|(label, value, focused, choice, error)| {
+            field_line(label, value, *focused, true, *choice, *error)
+        })
         .collect();
     lines.push(Line::from(""));
     if let Some(err) = &form.error {
@@ -106,13 +133,20 @@ pub fn render_hotspot(frame: &mut Frame, form: &HotspotForm) {
             Style::default().fg(Color::Red),
         )));
     }
-    lines.push(hint_line());
+    lines.push(hotspot_hint_line());
     render_modal(frame, " 建立熱點 ", lines);
 }
 
-fn hint_line() -> Line<'static> {
+fn connection_hint_line() -> Line<'static> {
     Line::from(Span::styled(
         "Tab/↑↓ 欄位   ←/→/Space 切換   Enter 送出   Esc 取消",
+        Style::default().fg(Color::DarkGray),
+    ))
+}
+
+fn hotspot_hint_line() -> Line<'static> {
+    Line::from(Span::styled(
+        "Tab/↑↓ 欄位   ←/→/Space 切換   Ctrl-R 顯示/隱藏   Enter 送出   Esc 取消",
         Style::default().fg(Color::DarkGray),
     ))
 }

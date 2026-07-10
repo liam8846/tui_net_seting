@@ -32,10 +32,14 @@ pub fn render(frame: &mut Frame, prompt: &PasswordPrompt) {
     let rows = Layout::vertical(constraints).split(inner);
 
     frame.render_widget(Paragraph::new("密碼："), rows[0]);
-    let masked = "•".repeat(prompt.input.chars().count());
+    let password = if prompt.show_password {
+        prompt.input.clone()
+    } else {
+        "•".repeat(prompt.input.chars().count())
+    };
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(masked, Style::default().fg(Color::White)),
+            Span::styled(password, Style::default().fg(Color::White)),
             Span::styled("▌", Style::default().add_modifier(Modifier::SLOW_BLINK)),
         ]))
         .block(Block::default().borders(Borders::BOTTOM)),
@@ -53,7 +57,7 @@ pub fn render(frame: &mut Frame, prompt: &PasswordPrompt) {
     let hint_row = rows.len() - 1;
     frame.render_widget(
         Paragraph::new(Span::styled(
-            "Enter 連接   Esc 取消",
+            "Ctrl-R 顯示/隱藏   Enter 連接   Esc 取消",
             Style::default().fg(Color::DarkGray),
         )),
         rows[hint_row],

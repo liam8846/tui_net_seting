@@ -132,6 +132,7 @@ pub enum Action {
     FormNext,
     FormPrev,
     FormCycle,
+    TogglePasswordVisibility,
     FormSubmit,
     ModalCancel,
     ConfirmYes,
