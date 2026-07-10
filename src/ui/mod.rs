@@ -237,8 +237,8 @@ mod tests {
     use ratatui::backend::TestBackend;
 
     use super::{draw, hint_line};
-    use crate::app::{App, DetailPane, Modal};
-    use crate::event::Tab;
+    use crate::app::{App, DetailPane, Modal, PasswordPrompt};
+    use crate::event::{Action, Tab};
 
     #[test]
     fn hint_line_keeps_complete_priority_groups_when_narrow() {
@@ -289,5 +289,47 @@ mod tests {
 
         let size = terminal.size().expect("terminal size");
         assert_eq!((size.width, size.height), (60, 16));
+    }
+
+    #[test]
+    fn password_modal_renders_masked_and_visible_input() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let mut app = App::new();
+        app.modal = Some(Modal::Password(PasswordPrompt {
+            ssid: "測試網路".into(),
+            input: String::new(),
+            show_password: false,
+            error: None,
+        }));
+        for character in "secret42".chars() {
+            app.apply(Action::FormInput(character));
+        }
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw masked password modal");
+        let masked = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert_eq!(masked.matches('*').count(), 8);
+        assert!(masked.contains("********▌"));
+
+        app.apply(Action::TogglePasswordVisibility);
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw visible password modal");
+        let visible = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(visible.contains("secret42▌"));
     }
 }

@@ -10,7 +10,7 @@ use crate::app::PasswordPrompt;
 use crate::ui::widgets::centered;
 
 pub fn render(frame: &mut Frame, prompt: &PasswordPrompt) {
-    let area = centered(frame.area(), 56, if prompt.error.is_some() { 8 } else { 7 });
+    let area = centered(frame.area(), 56, if prompt.error.is_some() { 9 } else { 8 });
     frame.render_widget(Clear, area);
 
     let block = Block::default()
@@ -22,7 +22,7 @@ pub fn render(frame: &mut Frame, prompt: &PasswordPrompt) {
 
     let mut constraints = vec![
         Constraint::Length(1), // label
-        Constraint::Length(1), // input
+        Constraint::Length(2), // input + underline
         Constraint::Length(1), // spacer / error
     ];
     if prompt.error.is_some() {
@@ -35,7 +35,7 @@ pub fn render(frame: &mut Frame, prompt: &PasswordPrompt) {
     let password = if prompt.show_password {
         prompt.input.clone()
     } else {
-        "•".repeat(prompt.input.chars().count())
+        "*".repeat(prompt.input.chars().count())
     };
     frame.render_widget(
         Paragraph::new(Line::from(vec![

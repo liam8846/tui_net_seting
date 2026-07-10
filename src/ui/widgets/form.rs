@@ -100,7 +100,7 @@ pub fn render_hotspot(frame: &mut Frame, form: &HotspotForm) {
     let password = if form.show_password {
         form.password.clone()
     } else {
-        "•".repeat(form.password.chars().count())
+        "*".repeat(form.password.chars().count())
     };
     let fields = [
         (
