@@ -30,18 +30,68 @@ const POLL_TICKS: u64 = 40;
 pub struct Rows<T> {
     pub items: Vec<T>,
     pub selected: usize,
+    visible: Vec<usize>,
 }
 
-impl<T> Rows<T> {
+pub trait RowIdentity {
+    fn same_identity(&self, other: &Self) -> bool;
+}
+
+impl RowIdentity for Device {
+    fn same_identity(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl RowIdentity for Connection {
+    fn same_identity(&self, other: &Self) -> bool {
+        self.uuid == other.uuid
+    }
+}
+
+impl RowIdentity for WifiAp {
+    fn same_identity(&self, other: &Self) -> bool {
+        let key = if self.bssid.is_empty() {
+            &self.ssid
+        } else {
+            &self.bssid
+        };
+        let other_key = if other.bssid.is_empty() {
+            &other.ssid
+        } else {
+            &other.bssid
+        };
+        key == other_key
+    }
+}
+
+impl<T: RowIdentity> Rows<T> {
     fn new() -> Self {
         Self {
             items: Vec::new(),
             selected: 0,
+            visible: Vec::new(),
         }
     }
 
     pub fn selected(&self) -> Option<&T> {
-        self.items.get(self.selected)
+        self.visible
+            .get(self.selected)
+            .and_then(|index| self.items.get(*index))
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.visible
+            .iter()
+            .filter_map(|index| self.items.get(*index))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.visible.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.visible.len()
     }
 
     pub fn up(&mut self) {
@@ -49,16 +99,67 @@ impl<T> Rows<T> {
     }
 
     pub fn down(&mut self) {
-        if self.selected + 1 < self.items.len() {
+        if self.selected + 1 < self.visible.len() {
             self.selected += 1;
         }
     }
 
+    pub fn first(&mut self) {
+        self.selected = 0;
+    }
+
+    pub fn last(&mut self) {
+        self.selected = self.visible.len().saturating_sub(1);
+    }
+
+    pub fn page_up(&mut self) {
+        self.selected = self.selected.saturating_sub(10);
+    }
+
+    pub fn page_down(&mut self) {
+        self.selected = self
+            .selected
+            .saturating_add(10)
+            .min(self.visible.len().saturating_sub(1));
+    }
+
     pub fn set(&mut self, items: Vec<T>) {
+        let old_selected = self.selected;
+        let aligned = self
+            .selected()
+            .and_then(|old| items.iter().position(|item| old.same_identity(item)));
         self.items = items;
-        if self.selected >= self.items.len() {
-            self.selected = self.items.len().saturating_sub(1);
-        }
+        self.visible = (0..self.items.len()).collect();
+        self.selected = aligned
+            .unwrap_or(old_selected)
+            .min(self.visible.len().saturating_sub(1));
+    }
+
+    fn filter(&mut self, include: impl Fn(&T) -> bool) {
+        let old_selected = self.selected;
+        let old_index = self.visible.get(self.selected).copied();
+        self.visible = self
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| include(item).then_some(index))
+            .collect();
+        self.selected = old_index
+            .and_then(|index| self.visible.iter().position(|visible| *visible == index))
+            .unwrap_or(old_selected)
+            .min(self.visible.len().saturating_sub(1));
+    }
+}
+
+fn navigate_rows<T: RowIdentity>(rows: &mut Rows<T>, action: &Action) {
+    match action {
+        Action::Up => rows.up(),
+        Action::Down => rows.down(),
+        Action::First => rows.first(),
+        Action::Last => rows.last(),
+        Action::PageUp => rows.page_up(),
+        Action::PageDown => rows.page_down(),
+        _ => {}
     }
 }
 
@@ -97,6 +198,12 @@ impl Loading {
 pub struct DetailPane {
     pub device: String,
     pub raw: String,
+}
+
+#[derive(Default)]
+pub struct WifiFilter {
+    pub query: String,
+    pub editing: bool,
 }
 
 // ── modals ──────────────────────────────────────────────────────────────────
@@ -407,6 +514,9 @@ pub struct App {
     /// Selected row on the Radio tab: 0 = networking, 1 = wifi radio.
     pub radio_sel: usize,
     pub detail: Option<DetailPane>,
+    pub detail_scroll: u16,
+    pub help_scroll: u16,
+    pub wifi_filter: WifiFilter,
     pub modal: Option<Modal>,
     pub in_flight: Option<InFlight>,
     pub loading: Loading,
@@ -433,6 +543,9 @@ impl App {
             radio: None,
             radio_sel: 0,
             detail: None,
+            detail_scroll: 0,
+            help_scroll: 0,
+            wifi_filter: WifiFilter::default(),
             modal: None,
             in_flight: None,
             loading: Loading::default(),
@@ -539,6 +652,10 @@ impl App {
             .find(|c| c.ctype == ConnectionType::Wifi && c.name == ssid)
     }
 
+    pub fn is_wifi_saved(&self, ap: &WifiAp) -> bool {
+        self.saved_wifi_profile(&ap.ssid).is_some()
+    }
+
     pub fn hotspot_profile(&self) -> Option<&Connection> {
         self.connections
             .items
@@ -585,10 +702,37 @@ impl App {
             Action::NextTab => return self.goto_tab(self.tab.next()),
             Action::PrevTab => return self.goto_tab(self.tab.prev()),
             Action::GotoTab(tab) => return self.goto_tab(tab),
-            Action::Up | Action::Down => self.navigate(action, &mut effects),
+            Action::Up
+            | Action::Down
+            | Action::First
+            | Action::Last
+            | Action::PageUp
+            | Action::PageDown => self.navigate(action, &mut effects),
             Action::Refresh => return self.refresh_tab(self.tab == Tab::Wifi),
-            Action::ShowHelp => self.modal = Some(Modal::Help),
-            Action::Back => self.detail = None,
+            Action::ShowHelp => {
+                self.help_scroll = 0;
+                self.modal = Some(Modal::Help);
+            }
+            Action::Back => {
+                if self.tab == Tab::Wifi && !self.wifi_filter.query.is_empty() {
+                    self.clear_wifi_filter();
+                } else {
+                    self.close_detail();
+                }
+            }
+            Action::WifiFilterStart => self.wifi_filter.editing = true,
+            Action::WifiFilterInput(c) => {
+                self.wifi_filter.query.push(c);
+                self.apply_wifi_filter();
+            }
+            Action::WifiFilterBackspace => {
+                self.wifi_filter.query.pop();
+                self.apply_wifi_filter();
+            }
+            Action::WifiFilterAccept => self.wifi_filter.editing = false,
+            Action::WifiFilterClear => self.clear_wifi_filter(),
+            Action::ScrollUp => self.scroll_up(),
+            Action::ScrollDown => self.scroll_down(),
 
             Action::DeviceConnect => {
                 if let Some(d) = self.devices.selected() {
@@ -622,8 +766,9 @@ impl App {
                 if let Some(d) = self.devices.selected() {
                     let same = self.detail.as_ref().is_some_and(|p| p.device == d.name);
                     if same {
-                        self.detail = None;
+                        self.close_detail();
                     } else {
+                        self.detail_scroll = 0;
                         effects.push(Effect::LoadDeviceDetail(d.name.clone()));
                     }
                 }
@@ -730,46 +875,67 @@ impl App {
 
     fn goto_tab(&mut self, tab: Tab) -> Vec<Effect> {
         self.tab = tab;
-        self.detail = None;
+        self.close_detail();
         self.refresh_tab(false)
     }
 
     fn navigate(&mut self, action: Action, effects: &mut Vec<Effect>) {
-        let up = action == Action::Up;
         match self.tab {
             Tab::Devices => {
                 let before = self.devices.selected;
-                if up {
-                    self.devices.up()
-                } else {
-                    self.devices.down()
-                }
+                navigate_rows(&mut self.devices, &action);
                 // Keep an open detail pane in sync with the selection.
                 if self.devices.selected != before
                     && self.detail.is_some()
                     && let Some(d) = self.devices.selected()
                 {
+                    self.detail_scroll = 0;
                     effects.push(Effect::LoadDeviceDetail(d.name.clone()));
                 }
             }
-            Tab::Connections => {
-                if up {
-                    self.connections.up()
-                } else {
-                    self.connections.down()
-                }
-            }
-            Tab::Wifi => {
-                if up {
-                    self.wifi.up()
-                } else {
-                    self.wifi.down()
-                }
-            }
+            Tab::Connections => navigate_rows(&mut self.connections, &action),
+            Tab::Wifi => navigate_rows(&mut self.wifi, &action),
             Tab::Radio => {
-                self.radio_sel = if up { 0 } else { 1 };
+                self.radio_sel = if matches!(action, Action::Up | Action::First | Action::PageUp) {
+                    0
+                } else {
+                    1
+                };
             }
             Tab::Hotspot => {}
+        }
+    }
+
+    fn apply_wifi_filter(&mut self) {
+        let query = self.wifi_filter.query.to_lowercase();
+        self.wifi
+            .filter(|ap| ap.ssid.to_lowercase().contains(&query));
+    }
+
+    fn clear_wifi_filter(&mut self) {
+        self.wifi_filter.query.clear();
+        self.wifi_filter.editing = false;
+        self.apply_wifi_filter();
+    }
+
+    fn close_detail(&mut self) {
+        self.detail = None;
+        self.detail_scroll = 0;
+    }
+
+    fn scroll_up(&mut self) {
+        if matches!(self.modal.as_ref(), Some(Modal::Help)) {
+            self.help_scroll = self.help_scroll.saturating_sub(1);
+        } else if self.detail.is_some() {
+            self.detail_scroll = self.detail_scroll.saturating_sub(1);
+        }
+    }
+
+    fn scroll_down(&mut self) {
+        if matches!(self.modal.as_ref(), Some(Modal::Help)) {
+            self.help_scroll = self.help_scroll.saturating_add(1);
+        } else if self.detail.is_some() {
+            self.detail_scroll = self.detail_scroll.saturating_add(1);
         }
     }
 
@@ -842,8 +1008,13 @@ impl App {
     fn apply_modal(&mut self, action: Action, effects: &mut Vec<Effect>) {
         match action {
             Action::ModalCancel | Action::ConfirmNo => {
+                if matches!(self.modal.as_ref(), Some(Modal::Help)) {
+                    self.help_scroll = 0;
+                }
                 self.modal = None;
             }
+            Action::ScrollUp => self.scroll_up(),
+            Action::ScrollDown => self.scroll_down(),
             Action::ErrorRetry => {
                 self.modal = None;
                 effects.extend(self.refresh_all());
@@ -996,7 +1167,15 @@ impl App {
             Msg::WifiAps(result) => {
                 self.loading.wifi = false;
                 match result {
-                    Ok(items) => self.wifi.set(items),
+                    Ok(mut items) => {
+                        items.sort_by(|a, b| {
+                            b.in_use
+                                .cmp(&a.in_use)
+                                .then_with(|| b.signal.cmp(&a.signal))
+                        });
+                        self.wifi.set(items);
+                        self.apply_wifi_filter();
+                    }
                     Err(e) => self.fail(e),
                 }
             }
@@ -1008,7 +1187,10 @@ impl App {
                 }
             }
             Msg::DeviceDetail { device, result } => match result {
-                Ok(raw) => self.detail = Some(DetailPane { device, raw }),
+                Ok(raw) => {
+                    self.detail_scroll = 0;
+                    self.detail = Some(DetailPane { device, raw });
+                }
                 Err(e) => self.fail(e),
             },
             Msg::ConnectionProfile { uuid: _, result } => match result {

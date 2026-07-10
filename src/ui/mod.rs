@@ -67,7 +67,12 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
     let [top, hints] = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
 
     // Top line: spinner + in-flight label, else the most recent toast.
-    let line = if let Some(inflight) = &app.in_flight {
+    let line = if app.tab == Tab::Wifi && app.wifi_filter.editing {
+        Line::from(Span::styled(
+            format!("/{}", app.wifi_filter.query),
+            Style::default().fg(Color::Cyan),
+        ))
+    } else if let Some(inflight) = &app.in_flight {
         Line::from(vec![
             Span::styled(
                 format!("{} ", widgets::spinner::frame(app.tick)),
@@ -80,6 +85,11 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
     } else if app.loading.any() {
         Line::from(Span::styled(
             format!("{} 載入中…", widgets::spinner::frame(app.tick)),
+            Style::default().fg(Color::DarkGray),
+        ))
+    } else if app.tab == Tab::Wifi && !app.wifi_filter.query.is_empty() {
+        Line::from(Span::styled(
+            format!("篩選：/{}（按 / 編輯，Esc 清除）", app.wifi_filter.query),
             Style::default().fg(Color::DarkGray),
         ))
     } else {
@@ -96,7 +106,7 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
 
     // Hint line: per-tab keys + globals.
     let mut spans = Vec::new();
-    for (k, label) in keys::hints(app.tab) {
+    for (k, label) in keys::hints(app) {
         spans.push(Span::styled(
             format!(" {k} "),
             Style::default().fg(Color::Black).bg(Color::Gray),
@@ -118,7 +128,7 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
 
 fn render_modal(frame: &mut Frame, app: &App, modal: &Modal) {
     match modal {
-        Modal::Help => render_help(frame),
+        Modal::Help => render_help(frame, app),
         Modal::Error(msg) => render_error(frame, msg),
         Modal::Confirm { prompt, .. } => widgets::confirm::render(frame, prompt),
         Modal::Password(p) => widgets::password::render(frame, p),
@@ -128,7 +138,7 @@ fn render_modal(frame: &mut Frame, app: &App, modal: &Modal) {
     let _ = app;
 }
 
-fn render_help(frame: &mut Frame) {
+fn render_help(frame: &mut Frame, app: &App) {
     let lines: Vec<Line> = keys::help_lines()
         .into_iter()
         .map(|(k, v)| {
@@ -145,11 +155,28 @@ fn render_help(frame: &mut Frame) {
     let height = (lines.len() as u16 + 2).min(frame.area().height.saturating_sub(2));
     let area = widgets::centered(frame.area(), 60, height);
     frame.render_widget(Clear, area);
+    let viewport = area.height.saturating_sub(2) as usize;
+    let max_scroll = lines.len().saturating_sub(viewport) as u16;
+    let scroll = app.help_scroll.min(max_scroll);
+    let remaining = lines
+        .len()
+        .saturating_sub(scroll as usize)
+        .saturating_sub(viewport);
+    let hint = if remaining > 0 {
+        format!(" J↓ 還有 {remaining} 行")
+    } else if scroll > 0 {
+        " K↑ 返回上方".to_string()
+    } else {
+        String::new()
+    };
     let block = Block::default()
-        .title(" 說明（按 ? 或 Esc 關閉） ")
+        .title(Line::from(vec![
+            Span::raw(" 說明（按 ? 或 Esc 關閉） "),
+            Span::styled(hint, Style::default().fg(Color::DarkGray)),
+        ]))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
 }
 
 fn render_error(frame: &mut Frame, msg: &str) {

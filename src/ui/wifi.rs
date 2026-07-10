@@ -15,13 +15,13 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
     render_header(frame, app, header_area);
 
-    let header = Row::new(["", "SSID", "訊號", "安全性", "頻道", "速率"]).style(
+    let header = Row::new(["", "SSID", "儲存", "訊號", "安全性", "頻道", "速率"]).style(
         Style::default()
             .fg(Color::Gray)
             .add_modifier(Modifier::BOLD),
     );
 
-    let rows = app.wifi.items.iter().map(|ap| {
+    let rows = app.wifi.iter().map(|ap| {
         let ssid = if ap.is_hidden() {
             Span::styled("<隱藏>", Style::default().fg(Color::DarkGray))
         } else {
@@ -30,6 +30,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         Row::new(vec![
             Cell::from(in_use_marker(ap)),
             Cell::from(ssid),
+            Cell::from(saved_marker(app, ap)),
             Cell::from(signal_cell(ap.signal)),
             Cell::from(security_label(ap)),
             Cell::from(ap.chan.clone()),
@@ -42,6 +43,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         [
             Constraint::Length(2),
             Constraint::Min(16),
+            Constraint::Length(6),
             Constraint::Length(12),
             Constraint::Length(12),
             Constraint::Length(4),
@@ -54,10 +56,25 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     .block(block(app));
 
     let mut state = TableState::default();
-    if !app.wifi.items.is_empty() {
+    if !app.wifi.is_empty() {
         state.select(Some(app.wifi.selected));
     }
     frame.render_stateful_widget(table, table_area, &mut state);
+    if app.wifi.is_empty() {
+        let text = if app.loading.wifi {
+            "載入中…".to_string()
+        } else if !app.wifi_filter.query.is_empty() {
+            format!(
+                "沒有符合「{}」的 Wi-Fi 網路 — 按 Esc 清除篩選",
+                app.wifi_filter.query
+            )
+        } else if app.radio.is_some_and(|radio| !radio.wifi) {
+            "Wi-Fi 無線電已關閉 — 到 5:無線開關 分頁開啟".to_string()
+        } else {
+            "找不到 Wi-Fi 網路 — 按 r 重新掃描".to_string()
+        };
+        super::widgets::empty_state(frame, table_area, text);
+    }
 }
 
 fn render_header(frame: &mut Frame, app: &App, area: Rect) {
@@ -75,6 +92,14 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
 fn in_use_marker(ap: &WifiAp) -> Span<'static> {
     if ap.in_use {
         Span::styled("●", Style::default().fg(Color::Green))
+    } else {
+        Span::raw(" ")
+    }
+}
+
+fn saved_marker(app: &App, ap: &WifiAp) -> Span<'static> {
+    if app.is_wifi_saved(ap) {
+        Span::styled("★", Style::default().fg(Color::DarkGray))
     } else {
         Span::raw(" ")
     }

@@ -86,6 +86,10 @@ pub enum Action {
     GotoTab(Tab),
     Up,
     Down,
+    First,
+    Last,
+    PageUp,
+    PageDown,
     Refresh,
     ShowHelp,
     /// Esc outside a modal: close the detail pane.
@@ -107,6 +111,15 @@ pub enum Action {
     WifiConnect,
     WifiDisconnect,
     WifiForget,
+    WifiFilterStart,
+    WifiFilterInput(char),
+    WifiFilterBackspace,
+    WifiFilterAccept,
+    WifiFilterClear,
+
+    // Scrollable panels
+    ScrollUp,
+    ScrollDown,
 
     // Hotspot / Radio
     HotspotCreate,

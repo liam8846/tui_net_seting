@@ -51,6 +51,14 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         state.select(Some(app.connections.selected));
     }
     frame.render_stateful_widget(table, area, &mut state);
+    if app.connections.is_empty() {
+        let text = if app.loading.connections {
+            "載入中…"
+        } else {
+            "找不到連線設定檔 — 按 a 新增或 r 重新整理"
+        };
+        super::widgets::empty_state(frame, area, text);
+    }
 }
 
 fn type_label(t: ConnectionType) -> String {

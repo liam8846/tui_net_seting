@@ -62,6 +62,14 @@ fn render_table(frame: &mut Frame, app: &App, area: Rect) {
         state.select(Some(app.devices.selected));
     }
     frame.render_stateful_widget(table, area, &mut state);
+    if app.devices.is_empty() {
+        let text = if app.loading.devices {
+            "載入中…"
+        } else {
+            "找不到網路裝置 — 按 r 重新整理"
+        };
+        super::widgets::empty_state(frame, area, text);
+    }
 }
 
 fn render_detail(frame: &mut Frame, app: &App, area: Rect) {
@@ -80,13 +88,31 @@ fn render_detail(frame: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
+    let viewport = area.height.saturating_sub(2) as usize;
+    let max_scroll = lines.len().saturating_sub(viewport) as u16;
+    let scroll = app.detail_scroll.min(max_scroll);
+    let remaining = lines
+        .len()
+        .saturating_sub(scroll as usize)
+        .saturating_sub(viewport);
+    let hint = if remaining > 0 {
+        format!(" J↓ 還有 {remaining} 行")
+    } else if scroll > 0 {
+        " K↑ 返回上方".to_string()
+    } else {
+        String::new()
+    };
     let block = Block::default()
-        .title(format!(" {} 詳細資訊 ", pane.device))
+        .title(Line::from(vec![
+            Span::raw(format!(" {} 詳細資訊 ", pane.device)),
+            Span::styled(hint, Style::default().fg(Color::DarkGray)),
+        ]))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(
         Paragraph::new(lines)
             .block(block)
+            .scroll((scroll, 0))
             .wrap(Wrap { trim: false }),
         area,
     );
