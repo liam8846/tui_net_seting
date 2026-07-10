@@ -11,15 +11,16 @@ use crate::app::App;
 use crate::model::WifiAp;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
-    let [header_area, table_area] =
-        Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
+    let [header_area, table_area] = wifi_areas(area);
     render_header(frame, app, header_area);
 
-    let header = Row::new(["", "SSID", "儲存", "訊號", "安全性", "頻道", "速率"]).style(
-        Style::default()
-            .fg(Color::Gray)
-            .add_modifier(Modifier::BOLD),
-    );
+    let compact = area.width < 80;
+    let header = if compact {
+        Row::new(["", "SSID", "訊號", "安全性"])
+    } else {
+        Row::new(["", "SSID", "儲存", "訊號", "安全性", "頻道", "速率"])
+    }
+    .style(super::widgets::table_header_style());
 
     let rows = app.wifi.iter().map(|ap| {
         let ssid = if ap.is_hidden() {
@@ -27,20 +28,34 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         } else {
             Span::raw(ap.ssid.clone())
         };
-        Row::new(vec![
-            Cell::from(in_use_marker(ap)),
-            Cell::from(ssid),
-            Cell::from(saved_marker(app, ap)),
-            Cell::from(signal_cell(ap.signal)),
-            Cell::from(security_label(ap)),
-            Cell::from(ap.chan.clone()),
-            Cell::from(ap.rate.clone()),
-        ])
+        let in_use = Cell::from(in_use_marker(ap));
+        let name = Cell::from(ssid);
+        let signal = Cell::from(signal_cell(ap.signal));
+        let security = Cell::from(security_label(ap));
+        if compact {
+            Row::new(vec![in_use, name, signal, security])
+        } else {
+            Row::new(vec![
+                in_use,
+                name,
+                Cell::from(saved_marker(app, ap)),
+                signal,
+                security,
+                Cell::from(ap.chan.clone()),
+                Cell::from(ap.rate.clone()),
+            ])
+        }
     });
 
-    let table = Table::new(
-        rows,
-        [
+    let widths = if compact {
+        vec![
+            Constraint::Length(2),
+            Constraint::Min(16),
+            Constraint::Length(12),
+            Constraint::Length(12),
+        ]
+    } else {
+        vec![
             Constraint::Length(2),
             Constraint::Min(16),
             Constraint::Length(6),
@@ -48,12 +63,13 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(12),
             Constraint::Length(4),
             Constraint::Length(11),
-        ],
-    )
-    .header(header)
-    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
-    .highlight_symbol("› ")
-    .block(block(app));
+        ]
+    };
+    let table = Table::new(rows, widths)
+        .header(header)
+        .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+        .highlight_symbol("› ")
+        .block(block(app));
 
     let mut state = TableState::default();
     if !app.wifi.is_empty() {
@@ -75,6 +91,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         };
         super::widgets::empty_state(frame, table_area, text);
     }
+}
+
+pub(crate) fn wifi_areas(area: Rect) -> [Rect; 2] {
+    Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area)
 }
 
 fn render_header(frame: &mut Frame, app: &App, area: Rect) {

@@ -39,7 +39,7 @@ pub fn render(frame: &mut Frame, prompt: &PasswordPrompt) {
     };
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(password, Style::default().fg(Color::White)),
+            Span::raw(password),
             Span::styled("▌", Style::default().add_modifier(Modifier::SLOW_BLINK)),
         ]))
         .block(Block::default().borders(Borders::BOTTOM)),

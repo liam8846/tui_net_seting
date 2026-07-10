@@ -271,6 +271,25 @@ fn device_refresh_keeps_selection_by_name_and_falls_back_when_missing() {
 }
 
 #[test]
+fn selecting_device_row_keeps_open_detail_in_sync() {
+    let mut app = app_with_devices();
+    app.detail = Some(DetailPane {
+        device: "eth0".into(),
+        raw: String::new(),
+    });
+    app.detail_scroll = 4;
+
+    let effects = app.apply(Action::SelectRow(1));
+
+    assert_eq!(app.devices.selected, 1);
+    assert_eq!(app.detail_scroll, 0);
+    assert!(matches!(
+        effects.as_slice(),
+        [Effect::LoadDeviceDetail(device)] if device == "wlan0"
+    ));
+}
+
+#[test]
 fn empty_state_distinguishes_loading_from_loaded_empty_lists() {
     let mut app = App::new();
     app.initial_effects();

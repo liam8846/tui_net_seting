@@ -4,6 +4,7 @@
 
 use std::io::{self, Stdout};
 
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -17,7 +18,7 @@ pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 pub fn init() -> color_eyre::Result<Tui> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     install_panic_hook();
     let terminal = Terminal::new(CrosstermBackend::new(stdout))?;
     Ok(terminal)
@@ -26,7 +27,7 @@ pub fn init() -> color_eyre::Result<Tui> {
 /// Leave the alternate screen and disable raw mode. Best-effort; safe to call
 /// on any exit path, including after an error.
 pub fn restore() -> color_eyre::Result<()> {
-    execute!(io::stdout(), LeaveAlternateScreen)?;
+    execute!(io::stdout(), DisableMouseCapture, LeaveAlternateScreen)?;
     disable_raw_mode()?;
     Ok(())
 }

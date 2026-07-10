@@ -37,14 +37,14 @@ fn toggle_row(label: &str, state: Option<bool>, selected: bool) -> Line<'static>
         Some(false) => ("[ 關 ]", Color::Red),
         None => ("[ ... ]", Color::DarkGray),
     };
-    let label_style = if selected {
-        Style::default().add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-    };
-    Line::from(vec![
+    let line = Line::from(vec![
         Span::styled(marker, Style::default().fg(Color::Cyan)),
-        Span::styled(format!("{label:<14}"), label_style),
+        Span::raw(format!("{label:<14}")),
         Span::styled(text.to_string(), Style::default().fg(color)),
-    ])
+    ]);
+    if selected {
+        line.style(Style::default().add_modifier(Modifier::REVERSED))
+    } else {
+        line
+    }
 }

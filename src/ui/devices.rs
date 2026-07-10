@@ -12,50 +12,89 @@ use crate::model::{DeviceState, DeviceType};
 use crate::parse::device::parse_kv_lines;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
-    match &app.detail {
-        Some(_) => {
-            let [left, right] =
-                Layout::horizontal([Constraint::Percentage(55), Constraint::Percentage(45)])
-                    .areas(area);
-            render_table(frame, app, left);
-            render_detail(frame, app, right);
-        }
-        None => render_table(frame, app, area),
+    let areas = pane_areas(area, app.detail.is_some());
+    if let Some(table) = areas.table {
+        render_table(frame, app, table);
+    }
+    if let Some(detail) = areas.detail {
+        render_detail(frame, app, detail);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PaneAreas {
+    pub table: Option<Rect>,
+    pub detail: Option<Rect>,
+}
+
+pub(crate) fn pane_areas(area: Rect, detail_open: bool) -> PaneAreas {
+    if !detail_open {
+        return PaneAreas {
+            table: Some(area),
+            detail: None,
+        };
+    }
+    if area.width < 80 {
+        return PaneAreas {
+            table: None,
+            detail: Some(area),
+        };
+    }
+    let [table, detail] =
+        Layout::horizontal([Constraint::Percentage(55), Constraint::Percentage(45)]).areas(area);
+    PaneAreas {
+        table: Some(table),
+        detail: Some(detail),
     }
 }
 
 fn render_table(frame: &mut Frame, app: &App, area: Rect) {
-    let header = Row::new(["裝置", "類型", "狀態", "連線"]).style(
-        Style::default()
-            .fg(Color::Gray)
-            .add_modifier(Modifier::BOLD),
-    );
+    let compact = area.width < 80;
+    let header = if compact {
+        Row::new(["裝置", "狀態", "連線"])
+    } else {
+        Row::new(["裝置", "類型", "狀態", "連線"])
+    }
+    .style(super::widgets::table_header_style());
 
     let rows = app.devices.items.iter().map(|d| {
-        Row::new(vec![
-            Cell::from(d.name.clone()),
-            Cell::from(type_label(&d.dtype)),
-            Cell::from(Span::styled(
-                d.state.label().to_string(),
-                state_style(&d.state),
-            )),
-            Cell::from(d.connection.clone().unwrap_or_else(|| "--".into())),
-        ])
+        let name = Cell::from(d.name.clone());
+        let state = Cell::from(Span::styled(
+            d.state.label().to_string(),
+            state_style(&d.state),
+        ));
+        let connection = Cell::from(d.connection.clone().unwrap_or_else(|| "--".into()));
+        if compact {
+            Row::new(vec![name, state, connection])
+        } else {
+            Row::new(vec![
+                name,
+                Cell::from(type_label(&d.dtype)),
+                state,
+                connection,
+            ])
+        }
     });
 
-    let table = Table::new(
-        rows,
-        [
+    let widths = if compact {
+        vec![
+            Constraint::Min(12),
             Constraint::Length(14),
+            Constraint::Length(16),
+        ]
+    } else {
+        vec![
+            Constraint::Min(14),
             Constraint::Length(10),
             Constraint::Length(14),
-            Constraint::Min(10),
-        ],
-    )
-    .header(header)
-    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
-    .highlight_symbol("› ")
-    .block(block(app, "裝置"));
+            Constraint::Length(18),
+        ]
+    };
+    let table = Table::new(rows, widths)
+        .header(header)
+        .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+        .highlight_symbol("› ")
+        .block(block(app, "裝置"));
 
     let mut state = TableState::default();
     if !app.devices.items.is_empty() {
@@ -81,7 +120,7 @@ fn render_detail(frame: &mut Frame, app: &App, area: Rect) {
             Line::from(vec![
                 Span::styled(
                     format!("{:<22}", pretty_key(kv.key)),
-                    Style::default().fg(Color::Gray),
+                    Style::default().fg(Color::DarkGray),
                 ),
                 Span::raw(kv.value.into_owned()),
             ])
@@ -149,9 +188,9 @@ fn state_style(state: &DeviceState) -> Style {
     let color = match state {
         DeviceState::Connected => Color::Green,
         DeviceState::Connecting | DeviceState::Deactivating => Color::Yellow,
-        DeviceState::Disconnected => Color::Gray,
+        DeviceState::Disconnected => Color::DarkGray,
         DeviceState::Unavailable | DeviceState::Unmanaged => Color::DarkGray,
-        DeviceState::Other(_) => Color::White,
+        DeviceState::Other(_) => return Style::default(),
     };
     Style::default().fg(color)
 }

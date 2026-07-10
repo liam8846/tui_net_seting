@@ -90,6 +90,7 @@ pub enum Action {
     Last,
     PageUp,
     PageDown,
+    SelectRow(usize),
     Refresh,
     ShowHelp,
     /// Esc outside a modal: close the detail pane.

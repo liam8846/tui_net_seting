@@ -825,6 +825,7 @@ impl App {
             | Action::Last
             | Action::PageUp
             | Action::PageDown => self.navigate(action, &mut effects),
+            Action::SelectRow(index) => self.select_row(index, &mut effects),
             Action::Refresh => return self.refresh_tab(self.tab == Tab::Wifi),
             Action::ShowHelp => {
                 self.help_scroll = 0;
@@ -1018,6 +1019,40 @@ impl App {
                 } else {
                     1
                 };
+            }
+            Tab::Hotspot => {}
+        }
+    }
+
+    fn select_row(&mut self, index: usize, effects: &mut Vec<Effect>) {
+        match self.tab {
+            Tab::Devices => {
+                let before = self.devices.selected;
+                if index < self.devices.len() {
+                    self.devices.selected = index;
+                }
+                if self.devices.selected != before
+                    && self.detail.is_some()
+                    && let Some(device) = self.devices.selected()
+                {
+                    self.detail_scroll = 0;
+                    effects.push(Effect::LoadDeviceDetail(device.name.clone()));
+                }
+            }
+            Tab::Connections => {
+                if index < self.connections.len() {
+                    self.connections.selected = index;
+                }
+            }
+            Tab::Wifi => {
+                if index < self.wifi.len() {
+                    self.wifi.selected = index;
+                }
+            }
+            Tab::Radio => {
+                if index < 2 {
+                    self.radio_sel = index;
+                }
             }
             Tab::Hotspot => {}
         }

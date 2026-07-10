@@ -33,16 +33,15 @@ fn field_line(
     let value_style = if !enabled {
         Style::default().fg(Color::DarkGray)
     } else if focused {
-        Style::default().fg(Color::Black).bg(Color::Cyan)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::REVERSED)
     } else {
-        Style::default().fg(Color::White)
+        Style::default()
     };
     let mut spans = vec![
         Span::styled(marker, Style::default().fg(Color::Cyan)),
-        Span::styled(
-            format!("{label:<LABEL_WIDTH$}"),
-            Style::default().fg(Color::Gray),
-        ),
+        Span::styled(format!("{label:<LABEL_WIDTH$}"), Style::default()),
         Span::styled(shown, value_style),
     ];
     if let Some(error) = error {

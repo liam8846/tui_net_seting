@@ -19,17 +19,29 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use crate::app::{App, Modal};
 use crate::event::Tab;
 
-pub fn draw(frame: &mut Frame, app: &App) {
-    let [tabs_area, body, status] = Layout::vertical([
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RootAreas {
+    pub tabs: Rect,
+    pub body: Rect,
+    pub status: Rect,
+}
+
+pub(crate) fn root_areas(area: Rect) -> RootAreas {
+    let [tabs, body, status] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(3),
         Constraint::Length(2),
     ])
-    .areas(frame.area());
+    .areas(area);
+    RootAreas { tabs, body, status }
+}
 
-    render_tabs(frame, app, tabs_area);
-    render_body(frame, app, body);
-    render_status(frame, app, status);
+pub fn draw(frame: &mut Frame, app: &App) {
+    let areas = root_areas(frame.area());
+
+    render_tabs(frame, app, areas.tabs);
+    render_body(frame, app, areas.body);
+    render_status(frame, app, areas.status);
 
     if let Some(modal) = &app.modal {
         render_modal(frame, app, modal);
@@ -45,10 +57,10 @@ fn render_tabs(frame: &mut Frame, app: &App, area: Rect) {
         .select(app.tab.index())
         .highlight_style(
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD | Modifier::REVERSED),
         )
+        .padding("", "")
         .divider("");
     frame.render_widget(tabs, area);
 }
@@ -104,26 +116,33 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
     };
     frame.render_widget(Paragraph::new(line), top);
 
-    // Hint line: per-tab keys + globals.
+    frame.render_widget(Paragraph::new(hint_line(app, hints.width)), hints);
+}
+
+fn hint_line(app: &App, width: u16) -> Line<'static> {
+    let mut bindings = vec![("?", "說明"), ("q", "離開")];
+    bindings.extend_from_slice(keys::hints(app));
+
     let mut spans = Vec::new();
-    for (k, label) in keys::hints(app) {
-        spans.push(Span::styled(
-            format!(" {k} "),
-            Style::default().fg(Color::Black).bg(Color::Gray),
-        ));
-        spans.push(Span::raw(format!(" {label}   ")));
+    let mut used = 0usize;
+    for (key, label) in bindings {
+        let group = vec![
+            Span::styled(
+                format!(" {key} "),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(format!(" {label}   ")),
+        ];
+        let group_width = Line::from(group.clone()).width();
+        if used.saturating_add(group_width) > usize::from(width) {
+            break;
+        }
+        used = used.saturating_add(group_width);
+        spans.extend(group);
     }
-    spans.push(Span::styled(
-        " ? ",
-        Style::default().fg(Color::Black).bg(Color::Gray),
-    ));
-    spans.push(Span::raw(" 說明   "));
-    spans.push(Span::styled(
-        " q ",
-        Style::default().fg(Color::Black).bg(Color::Gray),
-    ));
-    spans.push(Span::raw(" 離開"));
-    frame.render_widget(Paragraph::new(Line::from(spans)), hints);
+    Line::from(spans)
 }
 
 fn render_modal(frame: &mut Frame, app: &App, modal: &Modal) {
@@ -152,8 +171,7 @@ fn render_help(frame: &mut Frame, app: &App) {
             }
         })
         .collect();
-    let height = (lines.len() as u16 + 2).min(frame.area().height.saturating_sub(2));
-    let area = widgets::centered(frame.area(), 60, height);
+    let area = help_area(frame.area(), lines.len());
     frame.render_widget(Clear, area);
     let viewport = area.height.saturating_sub(2) as usize;
     let max_scroll = lines.len().saturating_sub(viewport) as u16;
@@ -177,6 +195,14 @@ fn render_help(frame: &mut Frame, app: &App) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
+}
+
+pub(crate) fn help_area(screen: Rect, line_count: usize) -> Rect {
+    let content_height = u16::try_from(line_count).unwrap_or(u16::MAX);
+    let height = content_height
+        .saturating_add(2)
+        .min(screen.height.saturating_sub(2));
+    widgets::centered(screen, 60, height)
 }
 
 fn render_error(frame: &mut Frame, msg: &str) {
@@ -203,4 +229,65 @@ fn render_error(frame: &mut Frame, msg: &str) {
         Paragraph::new(lines).block(block).wrap(Wrap { trim: true }),
         area,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    use super::{draw, hint_line};
+    use crate::app::{App, DetailPane, Modal};
+    use crate::event::Tab;
+
+    #[test]
+    fn hint_line_keeps_complete_priority_groups_when_narrow() {
+        let app = App::new();
+        let line = hint_line(&app, 60);
+        let rendered = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+
+        assert!(line.width() <= 60);
+        assert_eq!(line.spans.len() % 2, 0);
+        assert!(rendered.contains("?  說明"));
+        assert!(rendered.contains("q  離開"));
+    }
+
+    #[test]
+    fn all_tabs_render_at_supported_small_sizes() {
+        for (width, height) in [(80, 24), (60, 16)] {
+            for tab in Tab::ALL {
+                let backend = TestBackend::new(width, height);
+                let mut terminal = Terminal::new(backend).expect("test terminal");
+                let mut app = App::new();
+                app.tab = tab;
+                terminal.draw(|frame| draw(frame, &app)).expect("draw tab");
+            }
+        }
+    }
+
+    #[test]
+    fn narrow_detail_overlay_and_help_render_without_panicking() {
+        let backend = TestBackend::new(60, 16);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let mut app = App::new();
+        app.detail = Some(DetailPane {
+            device: "eth0".into(),
+            raw: "GENERAL.DEVICE:eth0\nIP4.ADDRESS[1]:192.0.2.2/24\n".into(),
+        });
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw detail overlay");
+
+        app.modal = Some(Modal::Help);
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw help overlay");
+
+        let size = terminal.size().expect("terminal size");
+        assert_eq!((size.width, size.height), (60, 16));
+    }
 }

@@ -14,7 +14,11 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     match app.hotspot_profile() {
         Some(c) => {
             let status = if c.active { "使用中" } else { "未啟用" };
-            let color = if c.active { Color::Green } else { Color::Gray };
+            let color = if c.active {
+                Color::Green
+            } else {
+                Color::DarkGray
+            };
             lines.push(Line::from(vec![
                 Span::raw("熱點設定檔："),
                 Span::styled(
@@ -28,7 +32,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 "按 x 停止並移除熱點。",
-                Style::default().fg(Color::Gray),
+                Style::default().fg(Color::DarkGray),
             )));
         }
         None => {
@@ -48,7 +52,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
                     "按 a 建立熱點。",
-                    Style::default().fg(Color::Gray),
+                    Style::default().fg(Color::DarkGray),
                 )));
             }
         }

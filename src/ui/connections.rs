@@ -10,11 +10,13 @@ use crate::app::App;
 use crate::model::ConnectionType;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
-    let header = Row::new(["名稱", "類型", "裝置", "啟用", "自動"]).style(
-        Style::default()
-            .fg(Color::Gray)
-            .add_modifier(Modifier::BOLD),
-    );
+    let compact = area.width < 80;
+    let header = if compact {
+        Row::new(["名稱", "類型", "啟用", "自動"])
+    } else {
+        Row::new(["名稱", "類型", "裝置", "啟用", "自動"])
+    }
+    .style(super::widgets::table_header_style());
 
     let rows = app.connections.items.iter().map(|c| {
         let active = if c.active {
@@ -22,29 +24,44 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         } else {
             Span::styled("  否", Style::default().fg(Color::DarkGray))
         };
-        Row::new(vec![
-            Cell::from(c.name.clone()),
-            Cell::from(type_label(c.ctype)),
-            Cell::from(c.device.clone().unwrap_or_else(|| "--".into())),
-            Cell::from(active),
-            Cell::from(if c.autoconnect { "是" } else { "否" }),
-        ])
+        let name = Cell::from(c.name.clone());
+        let kind = Cell::from(type_label(c.ctype));
+        let enabled = Cell::from(active);
+        let automatic = Cell::from(if c.autoconnect { "是" } else { "否" });
+        if compact {
+            Row::new(vec![name, kind, enabled, automatic])
+        } else {
+            Row::new(vec![
+                name,
+                kind,
+                Cell::from(c.device.clone().unwrap_or_else(|| "--".into())),
+                enabled,
+                automatic,
+            ])
+        }
     });
 
-    let table = Table::new(
-        rows,
-        [
+    let widths = if compact {
+        vec![
+            Constraint::Min(16),
+            Constraint::Length(10),
+            Constraint::Length(7),
+            Constraint::Length(5),
+        ]
+    } else {
+        vec![
             Constraint::Min(16),
             Constraint::Length(10),
             Constraint::Length(12),
             Constraint::Length(7),
             Constraint::Length(5),
-        ],
-    )
-    .header(header)
-    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
-    .highlight_symbol("› ")
-    .block(block(app));
+        ]
+    };
+    let table = Table::new(rows, widths)
+        .header(header)
+        .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+        .highlight_symbol("› ")
+        .block(block(app));
 
     let mut state = TableState::default();
     if !app.connections.items.is_empty() {

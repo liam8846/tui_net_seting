@@ -24,7 +24,7 @@ pub fn render(frame: &mut Frame, prompt: &str) {
     let block = Block::default()
         .title(" 確認 ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
+        .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(
         Paragraph::new(text)
             .block(block)

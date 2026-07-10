@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use crossterm::event::EventStream;
 use futures_util::StreamExt;
+use ratatui::layout::Rect;
 use tokio::sync::mpsc;
 
 use tui_net_seting::app::App;
@@ -40,6 +41,8 @@ async fn run(terminal: &mut tui::Tui) -> color_eyre::Result<()> {
     let mut input = EventStream::new();
     let mut ticker = tokio::time::interval(TICK);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let size = terminal.size()?;
+    let mut screen = Rect::new(0, 0, size.width, size.height);
 
     terminal.draw(|f| ui::draw(f, &app))?;
 
@@ -57,11 +60,18 @@ async fn run(terminal: &mut tui::Tui) -> color_eyre::Result<()> {
             _ = ticker.tick() => Event::Tick,
         };
 
+        let mut resized = false;
         let effects = match event {
-            Event::Input(ev) => match ui::keys::translate(&ev, &app) {
-                Some(action) => app.apply(action),
-                None => Vec::new(),
-            },
+            Event::Input(ev) => {
+                if let crossterm::event::Event::Resize(width, height) = &ev {
+                    screen = Rect::new(0, 0, *width, *height);
+                    resized = true;
+                }
+                match ui::keys::translate(&ev, &app, screen) {
+                    Some(action) => app.apply(action),
+                    None => Vec::new(),
+                }
+            }
             Event::Msg(msg) => app.on_msg(msg),
             Event::Tick => app.on_tick(),
         };
@@ -73,7 +83,8 @@ async fn run(terminal: &mut tui::Tui) -> color_eyre::Result<()> {
         if app.should_quit {
             break;
         }
-        if std::mem::take(&mut app.dirty) {
+        let dirty = std::mem::take(&mut app.dirty);
+        if resized || dirty {
             terminal.draw(|f| ui::draw(f, &app))?;
         }
     }
