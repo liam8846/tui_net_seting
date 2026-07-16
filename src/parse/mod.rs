@@ -4,6 +4,7 @@
 pub mod connection;
 pub mod device;
 pub mod error;
+pub mod gateway;
 pub mod terse;
 pub mod wifi;
 

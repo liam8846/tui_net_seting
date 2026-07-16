@@ -1,6 +1,7 @@
 //! Reusable rendering helpers shared across screens.
 
 pub mod confirm;
+pub mod conn_test;
 pub mod form;
 pub mod password;
 pub mod spinner;

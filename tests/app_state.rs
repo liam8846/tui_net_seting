@@ -1,9 +1,9 @@
 //! Pure state-machine tests for `App`. No terminal, no nmcli — just feed
 //! Actions/Msgs and assert on the resulting state and effects.
 
-use tui_net_seting::app::{App, ConnField, DetailPane, Modal, ToastLevel};
+use tui_net_seting::app::{App, ConnField, ConnTestStageState, DetailPane, Modal, ToastLevel};
 use tui_net_seting::effect::Effect;
-use tui_net_seting::event::{Action, AppError, Msg, OpKind, Tab};
+use tui_net_seting::event::{Action, AppError, ConnTestStage, Msg, OpKind, StageResult, Tab};
 use tui_net_seting::model::{
     Connection, ConnectionType, Device, DeviceState, DeviceType, IpMethod, RadioState, WifiAp,
 };
@@ -589,4 +589,304 @@ fn hotspot_visibility_toggles_and_new_form_is_masked() {
         &app.modal,
         Some(Modal::HotspotForm(form)) if !form.show_password
     ));
+}
+
+#[test]
+fn conn_test_prefers_selected_active_connection_device() {
+    let mut app = App::new();
+    app.tab = Tab::Connections;
+    app.on_msg(Msg::Devices(Ok(vec![Device {
+        name: "eth0".into(),
+        dtype: DeviceType::Ethernet,
+        state: DeviceState::Connected,
+        connection: Some("有線".into()),
+    }])));
+    let mut selected = connection("目前連線", "active", ConnectionType::Wifi);
+    selected.active = true;
+    selected.device = Some("wlan0".into());
+    app.on_msg(Msg::Connections(Ok(vec![selected])));
+
+    let effects = app.apply(Action::ConnTest);
+
+    assert!(matches!(
+        effects.as_slice(),
+        [Effect::RunConnTest {
+            device: Some(device),
+            ..
+        }] if device == "wlan0"
+    ));
+    assert!(matches!(
+        app.modal,
+        Some(Modal::ConnTest(ref state))
+            if matches!(state.gateway, ConnTestStageState::Running)
+    ));
+}
+
+#[test]
+fn conn_test_falls_back_to_first_connected_non_loopback_device() {
+    let mut app = App::new();
+    app.tab = Tab::Connections;
+    app.on_msg(Msg::Devices(Ok(vec![
+        Device {
+            name: "lo".into(),
+            dtype: DeviceType::Loopback,
+            state: DeviceState::Connected,
+            connection: Some("lo".into()),
+        },
+        Device {
+            name: "eth0".into(),
+            dtype: DeviceType::Ethernet,
+            state: DeviceState::Connected,
+            connection: Some("有線".into()),
+        },
+    ])));
+    app.on_msg(Msg::Connections(Ok(vec![connection(
+        "未啟用",
+        "inactive",
+        ConnectionType::Ethernet,
+    )])));
+
+    let effects = app.apply(Action::ConnTest);
+
+    assert!(matches!(
+        effects.as_slice(),
+        [Effect::RunConnTest {
+            device: Some(device),
+            ..
+        }] if device == "eth0"
+    ));
+}
+
+#[test]
+fn conn_test_without_connected_device_marks_gateway_failed() {
+    let mut app = App::new();
+    app.tab = Tab::Connections;
+    app.on_msg(Msg::Devices(Ok(vec![Device {
+        name: "lo".into(),
+        dtype: DeviceType::Loopback,
+        state: DeviceState::Connected,
+        connection: Some("lo".into()),
+    }])));
+
+    let effects = app.apply(Action::ConnTest);
+
+    assert!(matches!(
+        effects.as_slice(),
+        [Effect::RunConnTest { device: None, .. }]
+    ));
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnTest(state))
+            if matches!(
+                &state.gateway,
+                ConnTestStageState::Failed(message) if message == "沒有已連線的裝置"
+            ) && matches!(state.internet, ConnTestStageState::Running)
+    ));
+}
+
+#[test]
+fn conn_test_without_wifi_marks_wifi_skipped_and_disables_worker_check() {
+    let mut app = App::new();
+    app.tab = Tab::Connections;
+    app.on_msg(Msg::Devices(Ok(vec![Device {
+        name: "eth0".into(),
+        dtype: DeviceType::Ethernet,
+        state: DeviceState::Connected,
+        connection: Some("有線".into()),
+    }])));
+
+    let effects = app.apply(Action::ConnTest);
+
+    assert!(matches!(
+        effects.as_slice(),
+        [Effect::RunConnTest {
+            check_wifi: false,
+            ..
+        }]
+    ));
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnTest(state))
+            if matches!(
+                &state.wifi,
+                ConnTestStageState::Skipped(message)
+                    if message == "略過：沒有 Wi-Fi 裝置"
+            )
+    ));
+}
+
+#[test]
+fn conn_test_stage_messages_advance_in_order() {
+    let mut app = app_with_devices();
+    app.tab = Tab::Connections;
+    app.apply(Action::ConnTest);
+    let run_id = match &app.modal {
+        Some(Modal::ConnTest(state)) => state.run_id,
+        _ => panic!("expected connection test modal"),
+    };
+
+    app.on_msg(Msg::ConnTestStage {
+        run_id,
+        stage: ConnTestStage::Gateway,
+        result: StageResult::Passed("閘道正常".into()),
+    });
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnTest(state))
+            if matches!(state.gateway, ConnTestStageState::Passed(_))
+                && matches!(state.internet, ConnTestStageState::Running)
+    ));
+
+    app.on_msg(Msg::ConnTestStage {
+        run_id,
+        stage: ConnTestStage::Internet,
+        result: StageResult::Failed("網際網路失敗".into()),
+    });
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnTest(state))
+            if matches!(state.internet, ConnTestStageState::Failed(_))
+                && matches!(state.dns, ConnTestStageState::Running)
+    ));
+
+    app.on_msg(Msg::ConnTestStage {
+        run_id,
+        stage: ConnTestStage::Dns,
+        result: StageResult::Passed("DNS 正常".into()),
+    });
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnTest(state))
+            if matches!(state.dns, ConnTestStageState::Passed(_))
+                && matches!(state.wifi, ConnTestStageState::Running)
+    ));
+
+    app.on_msg(Msg::ConnTestStage {
+        run_id,
+        stage: ConnTestStage::Wifi,
+        result: StageResult::Skipped("未連線".into()),
+    });
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnTest(state)) if state.is_complete()
+    ));
+}
+
+#[test]
+fn conn_test_ignores_stale_messages_and_messages_after_escape() {
+    let mut app = app_with_devices();
+    app.tab = Tab::Connections;
+    app.apply(Action::ConnTest);
+    let run_id = match &app.modal {
+        Some(Modal::ConnTest(state)) => state.run_id,
+        _ => panic!("expected connection test modal"),
+    };
+
+    app.on_msg(Msg::ConnTestStage {
+        run_id: run_id + 1,
+        stage: ConnTestStage::Gateway,
+        result: StageResult::Passed("不應套用".into()),
+    });
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnTest(state))
+            if matches!(state.gateway, ConnTestStageState::Running)
+    ));
+
+    app.apply(Action::ModalCancel);
+    assert!(app.modal.is_none());
+    app.on_msg(Msg::ConnTestStage {
+        run_id,
+        stage: ConnTestStage::Gateway,
+        result: StageResult::Passed("殘留訊息".into()),
+    });
+    assert!(app.modal.is_none());
+}
+
+#[test]
+fn completed_conn_test_can_restart_but_running_test_cannot() {
+    let mut app = App::new();
+    app.tab = Tab::Connections;
+    let first_effects = app.apply(Action::ConnTest);
+    let first_run_id = match first_effects.as_slice() {
+        [Effect::RunConnTest { run_id, .. }] => *run_id,
+        _ => panic!("expected connection test effect"),
+    };
+
+    assert!(app.apply(Action::ConnTest).is_empty());
+    app.on_msg(Msg::ConnTestStage {
+        run_id: first_run_id,
+        stage: ConnTestStage::Internet,
+        result: StageResult::Passed("正常".into()),
+    });
+    app.on_msg(Msg::ConnTestStage {
+        run_id: first_run_id,
+        stage: ConnTestStage::Dns,
+        result: StageResult::Failed("失敗".into()),
+    });
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnTest(state)) if state.is_complete()
+    ));
+
+    let retry_effects = app.apply(Action::ConnTest);
+    assert!(matches!(
+        retry_effects.as_slice(),
+        [Effect::RunConnTest { run_id, .. }] if *run_id == first_run_id + 1
+    ));
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnTest(state))
+            if state.run_id == first_run_id + 1
+                && matches!(state.gateway, ConnTestStageState::Failed(_))
+                && matches!(state.internet, ConnTestStageState::Running)
+                && matches!(state.dns, ConnTestStageState::Pending)
+                && matches!(state.wifi, ConnTestStageState::Skipped(_))
+    ));
+}
+
+#[test]
+fn running_conn_test_can_be_closed_with_escape() {
+    let mut app = app_with_devices();
+    app.tab = Tab::Connections;
+    app.apply(Action::ConnTest);
+    assert!(matches!(app.modal, Some(Modal::ConnTest(_))));
+
+    app.apply(Action::ModalCancel);
+
+    assert!(app.modal.is_none());
+}
+
+#[test]
+fn conn_test_tick_redraws_only_while_test_is_running() {
+    let mut app = App::new();
+    app.tab = Tab::Connections;
+    let effects = app.apply(Action::ConnTest);
+    let run_id = match effects.as_slice() {
+        [Effect::RunConnTest { run_id, .. }] => *run_id,
+        _ => panic!("expected connection test effect"),
+    };
+
+    app.dirty = false;
+    app.on_tick();
+    assert!(app.dirty);
+
+    app.on_msg(Msg::ConnTestStage {
+        run_id,
+        stage: ConnTestStage::Internet,
+        result: StageResult::Passed("正常".into()),
+    });
+    app.on_msg(Msg::ConnTestStage {
+        run_id,
+        stage: ConnTestStage::Dns,
+        result: StageResult::Passed("正常".into()),
+    });
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnTest(state)) if state.is_complete()
+    ));
+
+    app.dirty = false;
+    app.on_tick();
+    assert!(!app.dirty);
 }

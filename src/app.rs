@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use crate::effect::Effect;
-use crate::event::{Action, AppError, Msg, OpKind, Tab};
+use crate::event::{Action, AppError, ConnTestStage, Msg, OpKind, StageResult, Tab};
 use crate::model::{
     Connection, ConnectionDraft, ConnectionType, Device, DeviceState, DeviceType, IpMethod,
     RadioState, WifiAp, validate_address_field, validate_dns_field, validate_gateway_field,
@@ -220,6 +220,75 @@ pub enum Modal {
     Password(PasswordPrompt),
     ConnForm(ConnForm),
     HotspotForm(HotspotForm),
+    ConnTest(ConnTestState),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnTestStageState {
+    Pending,
+    Running,
+    Passed(String),
+    Failed(String),
+    Skipped(String),
+}
+
+impl ConnTestStageState {
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Passed(_) | Self::Failed(_) | Self::Skipped(_))
+    }
+}
+
+impl From<StageResult> for ConnTestStageState {
+    fn from(result: StageResult) -> Self {
+        match result {
+            StageResult::Passed(message) => Self::Passed(message),
+            StageResult::Failed(message) => Self::Failed(message),
+            StageResult::Skipped(message) => Self::Skipped(message),
+        }
+    }
+}
+
+pub struct ConnTestState {
+    pub run_id: u64,
+    pub gateway: ConnTestStageState,
+    pub internet: ConnTestStageState,
+    pub dns: ConnTestStageState,
+    pub wifi: ConnTestStageState,
+}
+
+impl ConnTestState {
+    pub fn stage(&self, stage: ConnTestStage) -> &ConnTestStageState {
+        match stage {
+            ConnTestStage::Gateway => &self.gateway,
+            ConnTestStage::Internet => &self.internet,
+            ConnTestStage::Dns => &self.dns,
+            ConnTestStage::Wifi => &self.wifi,
+        }
+    }
+
+    fn stage_mut(&mut self, stage: ConnTestStage) -> &mut ConnTestStageState {
+        match stage {
+            ConnTestStage::Gateway => &mut self.gateway,
+            ConnTestStage::Internet => &mut self.internet,
+            ConnTestStage::Dns => &mut self.dns,
+            ConnTestStage::Wifi => &mut self.wifi,
+        }
+    }
+
+    pub fn is_complete(&self) -> bool {
+        ConnTestStage::ALL
+            .iter()
+            .all(|stage| self.stage(*stage).is_terminal())
+    }
+
+    fn start_next_pending(&mut self) {
+        for stage in ConnTestStage::ALL {
+            if matches!(self.stage(stage), ConnTestStageState::Pending) {
+                *self.stage_mut(stage) = ConnTestStageState::Running;
+                break;
+            }
+        }
+    }
 }
 
 /// What a confirmed yes/no dialog should do.
@@ -642,6 +711,7 @@ pub struct App {
     pub tick: u64,
     pub dirty: bool,
     pub should_quit: bool,
+    conn_test_seq: u64,
 }
 
 impl Default for App {
@@ -671,6 +741,7 @@ impl App {
             tick: 0,
             dirty: true,
             should_quit: false,
+            conn_test_seq: 0,
         }
     }
 
@@ -933,6 +1004,7 @@ impl App {
                     });
                 }
             }
+            Action::ConnTest => self.start_conn_test(&mut effects),
 
             Action::WifiConnect => self.wifi_connect(&mut effects),
             Action::WifiDisconnect => {
@@ -995,6 +1067,53 @@ impl App {
         self.tab = tab;
         self.close_detail();
         self.refresh_tab(false)
+    }
+
+    fn conn_test_device(&self) -> Option<String> {
+        self.connections
+            .selected()
+            .filter(|connection| connection.active)
+            .and_then(|connection| connection.device.clone())
+            .or_else(|| {
+                self.devices
+                    .items
+                    .iter()
+                    .find(|device| {
+                        device.state == DeviceState::Connected
+                            && device.dtype != DeviceType::Loopback
+                    })
+                    .map(|device| device.name.clone())
+            })
+    }
+
+    fn start_conn_test(&mut self, effects: &mut Vec<Effect>) {
+        let device = self.conn_test_device();
+        let check_wifi = !self.wifi_device_names().is_empty();
+        self.conn_test_seq = self.conn_test_seq.wrapping_add(1);
+
+        let mut state = ConnTestState {
+            run_id: self.conn_test_seq,
+            gateway: if device.is_some() {
+                ConnTestStageState::Pending
+            } else {
+                ConnTestStageState::Failed("沒有已連線的裝置".into())
+            },
+            internet: ConnTestStageState::Pending,
+            dns: ConnTestStageState::Pending,
+            wifi: if check_wifi {
+                ConnTestStageState::Pending
+            } else {
+                ConnTestStageState::Skipped("略過：沒有 Wi-Fi 裝置".into())
+            },
+        };
+        state.start_next_pending();
+        let run_id = state.run_id;
+        self.modal = Some(Modal::ConnTest(state));
+        effects.push(Effect::RunConnTest {
+            run_id,
+            device,
+            check_wifi,
+        });
     }
 
     fn navigate(&mut self, action: Action, effects: &mut Vec<Effect>) {
@@ -1164,7 +1283,18 @@ impl App {
                 if matches!(self.modal.as_ref(), Some(Modal::Help)) {
                     self.help_scroll = 0;
                 }
+                // Connection-test workers are intentionally not cancelled. Their
+                // remaining run_id-tagged messages are ignored after this closes.
                 self.modal = None;
+            }
+            Action::ConnTest => {
+                let complete = matches!(
+                    self.modal.as_ref(),
+                    Some(Modal::ConnTest(state)) if state.is_complete()
+                );
+                if complete {
+                    self.start_conn_test(effects);
+                }
             }
             Action::ScrollUp => self.scroll_up(),
             Action::ScrollDown => self.scroll_down(),
@@ -1372,6 +1502,20 @@ impl App {
                     Err(e) => self.command_failed(op, e),
                 }
             }
+            Msg::ConnTestStage {
+                run_id,
+                stage,
+                result,
+            } => {
+                let Some(Modal::ConnTest(state)) = &mut self.modal else {
+                    return effects;
+                };
+                if state.run_id != run_id {
+                    return effects;
+                }
+                *state.stage_mut(stage) = result.into();
+                state.start_next_pending();
+            }
             Msg::NetworkChanged => effects.extend(self.refresh_tab(false)),
             Msg::MonitorDied => {
                 if self.monitor_ok {
@@ -1498,8 +1642,12 @@ impl App {
         if self.toasts.len() != before {
             self.dirty = true;
         }
-        // Keep the spinner animating.
-        if self.in_flight.is_some() || self.loading.any() {
+        // Keep operation, loading, and connection-test spinners animating.
+        let conn_test_running = matches!(
+            &self.modal,
+            Some(Modal::ConnTest(state)) if !state.is_complete()
+        );
+        if self.in_flight.is_some() || self.loading.any() || conn_test_running {
             self.dirty = true;
         }
         // Fallback polling while `nmcli monitor` is down.

@@ -107,6 +107,7 @@ pub enum Action {
     ConnAdd,
     ConnEdit,
     ConnDelete,
+    ConnTest,
 
     // Wi-Fi
     WifiConnect,
@@ -140,6 +141,25 @@ pub enum Action {
     ConfirmNo,
     /// From the blocking error modal: dismiss and reload everything.
     ErrorRetry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnTestStage {
+    Gateway,
+    Internet,
+    Dns,
+    Wifi,
+}
+
+impl ConnTestStage {
+    pub const ALL: [Self; 4] = [Self::Gateway, Self::Internet, Self::Dns, Self::Wifi];
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StageResult {
+    Passed(String),
+    Failed(String),
+    Skipped(String),
 }
 
 /// A mutating nmcli operation, carried through `Effect::Run` and back in
@@ -223,6 +243,11 @@ pub enum Msg {
     CommandDone {
         op: OpKind,
         result: Result<(), AppError>,
+    },
+    ConnTestStage {
+        run_id: u64,
+        stage: ConnTestStage,
+        result: StageResult,
     },
     /// `nmcli monitor` reported activity → refresh the active tab.
     NetworkChanged,

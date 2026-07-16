@@ -153,8 +153,8 @@ fn render_modal(frame: &mut Frame, app: &App, modal: &Modal) {
         Modal::Password(p) => widgets::password::render(frame, p),
         Modal::ConnForm(f) => widgets::form::render_connection(frame, f),
         Modal::HotspotForm(f) => widgets::form::render_hotspot(frame, f),
+        Modal::ConnTest(state) => widgets::conn_test::render(frame, state, app.tick),
     }
-    let _ = app;
 }
 
 fn render_help(frame: &mut Frame, app: &App) {
@@ -237,7 +237,7 @@ mod tests {
     use ratatui::backend::TestBackend;
 
     use super::{draw, hint_line};
-    use crate::app::{App, DetailPane, Modal, PasswordPrompt};
+    use crate::app::{App, ConnTestStageState, ConnTestState, DetailPane, Modal, PasswordPrompt};
     use crate::event::{Action, Tab};
 
     #[test]
@@ -331,5 +331,39 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(visible.contains("secret42▌"));
+    }
+
+    #[test]
+    fn connection_test_modal_renders_all_stages_and_result_symbols() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let mut app = App::new();
+        app.modal = Some(Modal::ConnTest(ConnTestState {
+            run_id: 1,
+            gateway: ConnTestStageState::Passed("閘道回應正常".into()),
+            internet: ConnTestStageState::Failed("無法連上網際網路".into()),
+            dns: ConnTestStageState::Pending,
+            wifi: ConnTestStageState::Skipped("略過：沒有 Wi-Fi 裝置".into()),
+        }));
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw connection test modal");
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        let compact = rendered.replace(' ', "");
+
+        assert!(compact.contains("連線測試"));
+        assert!(compact.contains("LAN（閘道）"));
+        assert!(compact.contains("網際網路"));
+        assert!(compact.contains("DNS解析"));
+        assert!(compact.contains("Wi-Fi無線狀態"));
+        assert!(rendered.contains('✓'));
+        assert!(rendered.contains('✗'));
     }
 }

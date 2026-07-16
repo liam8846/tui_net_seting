@@ -29,6 +29,7 @@ pub fn translate(event: &crossterm::event::Event, app: &App, screen: Rect) -> Op
         Some(Modal::Password(_)) => password_modal_keys(key),
         Some(Modal::ConnForm(_)) => text_modal_keys(key),
         Some(Modal::HotspotForm(_)) => password_modal_keys(key),
+        Some(Modal::ConnTest(_)) => conn_test_keys(key),
         None => root_keys(key, app),
     }
 }
@@ -216,6 +217,14 @@ fn confirm_keys(key: &KeyEvent) -> Option<Action> {
     }
 }
 
+fn conn_test_keys(key: &KeyEvent) -> Option<Action> {
+    match key.code {
+        KeyCode::Esc => Some(Action::ModalCancel),
+        KeyCode::Char('r') | KeyCode::Enter => Some(Action::ConnTest),
+        _ => None,
+    }
+}
+
 /// Shared editing keys for the password / connection / hotspot forms.
 fn text_modal_keys(key: &KeyEvent) -> Option<Action> {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -296,6 +305,7 @@ fn connections_keys(key: &KeyEvent) -> Option<Action> {
         KeyCode::Char('a') => Some(Action::ConnAdd),
         KeyCode::Char('e') => Some(Action::ConnEdit),
         KeyCode::Char('x') | KeyCode::Delete => Some(Action::ConnDelete),
+        KeyCode::Char('t') => Some(Action::ConnTest),
         _ => None,
     }
 }
@@ -351,6 +361,13 @@ pub fn hints(app: &App) -> &'static [(&'static str, &'static str)] {
     if matches!(app.modal, Some(Modal::Help)) {
         return &[("J/K", "捲動說明"), ("Esc", "關閉")];
     }
+    if let Some(Modal::ConnTest(state)) = &app.modal {
+        return if state.is_complete() {
+            &[("r/Enter", "重新測試"), ("Esc", "關閉")]
+        } else {
+            &[("Esc", "關閉")]
+        };
+    }
     if app.tab == Tab::Wifi && app.wifi_filter.editing {
         return &[
             ("輸入", "篩選 SSID"),
@@ -372,6 +389,7 @@ pub fn hints(app: &App) -> &'static [(&'static str, &'static str)] {
         ],
         Tab::Connections => &[
             ("Enter", "啟用"),
+            ("t", "測試"),
             ("d", "停用"),
             ("a", "新增"),
             ("e", "編輯"),
@@ -415,6 +433,7 @@ pub fn help_lines() -> Vec<(&'static str, &'static str)> {
         ("連線 - d", "停用設定檔"),
         ("連線 - a / e", "新增 / 編輯設定檔"),
         ("連線 - x / Del", "刪除設定檔"),
+        ("連線 - t", "測試連線（LAN/網際網路/DNS/Wi-Fi）"),
         ("Wi-Fi - Enter", "連接（需要時詢問密碼）"),
         ("Wi-Fi - d / f", "中斷 / 忘記"),
         ("Wi-Fi - /", "依 SSID 增量篩選（所有可列印字元皆為輸入）"),
@@ -590,5 +609,29 @@ mod tests {
         let narrow = Rect::new(0, 0, 60, 16);
         let action = translate(&mouse(MouseEventKind::ScrollDown, 20, 5), &app, narrow);
         assert_eq!(action, Some(Action::ScrollDown));
+    }
+
+    #[test]
+    fn connection_test_keys_open_close_and_retry_the_modal() {
+        let mut app = App::new();
+        app.tab = Tab::Connections;
+        assert_eq!(
+            translate(&key(KeyCode::Char('t'), KeyModifiers::NONE), &app, SCREEN),
+            Some(Action::ConnTest)
+        );
+
+        app.apply(Action::ConnTest);
+        assert_eq!(
+            translate(&key(KeyCode::Char('r'), KeyModifiers::NONE), &app, SCREEN),
+            Some(Action::ConnTest)
+        );
+        assert_eq!(
+            translate(&key(KeyCode::Enter, KeyModifiers::NONE), &app, SCREEN),
+            Some(Action::ConnTest)
+        );
+        assert_eq!(
+            translate(&key(KeyCode::Esc, KeyModifiers::NONE), &app, SCREEN),
+            Some(Action::ModalCancel)
+        );
     }
 }

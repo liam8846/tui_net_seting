@@ -71,6 +71,14 @@ pub fn args_radio_wifi_status() -> Vec<String> {
     base(&["radio", "wifi"])
 }
 
+pub fn args_connectivity_check() -> Vec<String> {
+    base(&["networking", "connectivity", "check"])
+}
+
+pub fn args_gateway(device: &str) -> Vec<String> {
+    base(&["-g", "IP4.GATEWAY,IP6.GATEWAY", "device", "show", device])
+}
+
 pub fn args_monitor() -> Vec<String> {
     base(&["monitor"])
 }
@@ -265,6 +273,30 @@ mod tests {
             args_wifi_connect("Open Net", None),
             [
                 "--color", "no", "-w", "20", "device", "wifi", "connect", "Open Net"
+            ]
+        );
+    }
+
+    #[test]
+    fn connectivity_check_argv() {
+        assert_eq!(
+            args_connectivity_check(),
+            ["--color", "no", "networking", "connectivity", "check"]
+        );
+    }
+
+    #[test]
+    fn gateway_query_argv() {
+        assert_eq!(
+            args_gateway("eth0"),
+            [
+                "--color",
+                "no",
+                "-g",
+                "IP4.GATEWAY,IP6.GATEWAY",
+                "device",
+                "show",
+                "eth0"
             ]
         );
     }

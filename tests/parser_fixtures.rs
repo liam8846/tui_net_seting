@@ -9,6 +9,7 @@ use tui_net_seting::model::{
 };
 use tui_net_seting::parse::connection::{parse_connections, parse_profile};
 use tui_net_seting::parse::device::{parse_devices, parse_kv_lines};
+use tui_net_seting::parse::gateway::parse_gateway;
 use tui_net_seting::parse::wifi::parse_wifi_list;
 
 const DEVICE_STATUS: &str = include_str!("fixtures/device_status.terse");
@@ -16,6 +17,9 @@ const DEVICE_SHOW: &str = include_str!("fixtures/device_show_eth0.terse");
 const CONNECTIONS: &str = include_str!("fixtures/connection_show.terse");
 const PROFILE: &str = include_str!("fixtures/connection_profile.terse");
 const WIFI_LIST: &str = include_str!("fixtures/wifi_list.terse");
+const GATEWAY_DUAL: &str = include_str!("fixtures/gateway_dual.terse");
+const GATEWAY_IPV6_ONLY: &str = include_str!("fixtures/gateway_ipv6_only.terse");
+const GATEWAY_EMPTY: &str = include_str!("fixtures/gateway_empty.terse");
 
 #[test]
 fn device_status_fixture() {
@@ -97,4 +101,19 @@ fn wifi_list_fixture_with_escaped_and_hidden() {
     // Hidden network: empty SSID.
     assert!(aps[3].is_hidden());
     assert!(aps[3].is_secured());
+}
+
+#[test]
+fn gateway_fixtures_prefer_values_without_allocating() {
+    let dual = parse_gateway(GATEWAY_DUAL);
+    assert_eq!(dual.ipv4, Some("192.168.1.1"));
+    assert_eq!(dual.ipv6, Some("fe80::1"));
+
+    let ipv6_only = parse_gateway(GATEWAY_IPV6_ONLY);
+    assert_eq!(ipv6_only.ipv4, None);
+    assert_eq!(ipv6_only.ipv6, Some("fe80::abcd"));
+
+    let empty = parse_gateway(GATEWAY_EMPTY);
+    assert_eq!(empty.ipv4, None);
+    assert_eq!(empty.ipv6, None);
 }
