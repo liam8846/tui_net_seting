@@ -5,7 +5,7 @@
 use std::borrow::Cow;
 
 use tui_net_seting::model::{
-    Connection, ConnectionType, Device, DeviceState, DeviceType, IpMethod, WifiAp,
+    Connection, ConnectionDraft, ConnectionType, Device, DeviceState, DeviceType, IpMethod, WifiAp,
 };
 use tui_net_seting::parse::connection::{parse_connections, parse_profile};
 use tui_net_seting::parse::device::{parse_devices, parse_kv_lines};
@@ -72,11 +72,15 @@ fn profile_fixture_maps_to_draft_fields() {
     let profile = parse_profile(PROFILE).unwrap();
     assert_eq!(profile.name, "Wired connection 1");
     assert!(profile.autoconnect);
+    assert_eq!(profile.ifname, "enp3s0");
     assert_eq!(IpMethod::parse(&profile.ipv4_method), IpMethod::Manual);
     assert_eq!(profile.ipv4_addresses, "192.168.1.42/24");
     assert_eq!(profile.ipv4_dns, "192.168.1.1,9.9.9.9");
     assert_eq!(IpMethod::parse(&profile.ipv6_method), IpMethod::Auto);
     assert_eq!(profile.ipv6_dns, "");
+
+    let draft = ConnectionDraft::from_profile("uuid-1", profile);
+    assert_eq!(draft.ifname, "enp3s0");
 }
 
 #[test]

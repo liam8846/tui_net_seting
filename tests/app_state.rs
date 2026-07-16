@@ -5,7 +5,8 @@ use tui_net_seting::app::{App, ConnField, ConnTestStageState, DetailPane, Modal,
 use tui_net_seting::effect::Effect;
 use tui_net_seting::event::{Action, AppError, ConnTestStage, Msg, OpKind, StageResult, Tab};
 use tui_net_seting::model::{
-    Connection, ConnectionType, Device, DeviceState, DeviceType, IpMethod, RadioState, WifiAp,
+    Connection, ConnectionDraft, ConnectionType, Device, DeviceState, DeviceType, IpMethod,
+    RadioState, WifiAp,
 };
 use tui_net_seting::nm::{NmExit, NmcliError};
 use tui_net_seting::parse::device::parse_devices;
@@ -39,6 +40,15 @@ fn device(name: &str) -> Device {
         name: name.into(),
         dtype: DeviceType::Ethernet,
         state: DeviceState::Disconnected,
+        connection: None,
+    }
+}
+
+fn typed_device(name: &str, dtype: DeviceType, state: DeviceState) -> Device {
+    Device {
+        name: name.into(),
+        dtype,
+        state,
         connection: None,
     }
 }
@@ -78,6 +88,152 @@ fn app_with_manual_ipv4_address_focus() -> App {
         _ => panic!("expected connection form"),
     }
     app
+}
+
+#[test]
+fn connection_form_captures_filtered_interface_choices_with_any_first() {
+    let mut app = App::new();
+    app.on_msg(Msg::Devices(Ok(vec![
+        typed_device("eth0", DeviceType::Ethernet, DeviceState::Disconnected),
+        typed_device("wlan0", DeviceType::Wifi, DeviceState::Disconnected),
+        typed_device("wlan9", DeviceType::Wifi, DeviceState::Unmanaged),
+        typed_device("lo", DeviceType::Loopback, DeviceState::Connected),
+    ])));
+
+    app.apply(Action::ConnAdd);
+
+    let Some(Modal::ConnForm(form)) = &app.modal else {
+        panic!("expected connection form");
+    };
+    let choices: Vec<(&str, &str)> = form
+        .ifnames
+        .iter()
+        .map(|choice| (choice.ifname.as_str(), choice.label.as_str()))
+        .collect();
+    assert_eq!(choices, [("", "任意 (*)"), ("eth0", "eth0（乙太網）")]);
+    assert_eq!(form.ifname_idx, 0);
+    assert!(form.draft.ifname.is_empty());
+}
+
+#[test]
+fn connection_form_cycles_interface_and_wraps_to_any() {
+    let mut app = app_with_devices();
+    app.apply(Action::ConnAdd);
+    if let Some(Modal::ConnForm(form)) = &mut app.modal {
+        form.focus = 2;
+    }
+
+    app.apply(Action::FormCycle);
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnForm(form)) if form.draft.ifname == "eth0"
+    ));
+
+    app.apply(Action::FormCycle);
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnForm(form))
+            if form.draft.ifname.is_empty() && form.ifname_idx == 0
+    ));
+}
+
+#[test]
+fn connection_type_cycle_refilters_interfaces_and_falls_back_to_any() {
+    let mut app = app_with_devices();
+    app.apply(Action::ConnAdd);
+    if let Some(Modal::ConnForm(form)) = &mut app.modal {
+        form.focus = 2;
+    }
+    app.apply(Action::FormCycle);
+
+    if let Some(Modal::ConnForm(form)) = &mut app.modal {
+        form.focus = 1;
+    }
+    app.apply(Action::FormCycle);
+
+    let Some(Modal::ConnForm(form)) = &app.modal else {
+        panic!("expected connection form");
+    };
+    assert_eq!(form.draft.ctype, ConnectionType::Wifi);
+    assert!(form.draft.ifname.is_empty());
+    let names: Vec<&str> = form
+        .ifnames
+        .iter()
+        .map(|choice| choice.ifname.as_str())
+        .collect();
+    assert_eq!(names, ["", "wlan0"]);
+    assert_eq!(form.ifnames[1].label, "wlan0（Wi-Fi）");
+}
+
+#[test]
+fn connection_type_cycle_keeps_selected_device_name_when_still_available() {
+    let mut app = App::new();
+    app.on_msg(Msg::Devices(Ok(vec![
+        typed_device("shared0", DeviceType::Ethernet, DeviceState::Disconnected),
+        typed_device("shared0", DeviceType::Wifi, DeviceState::Disconnected),
+    ])));
+    app.apply(Action::ConnAdd);
+    if let Some(Modal::ConnForm(form)) = &mut app.modal {
+        form.focus = 2;
+    }
+    app.apply(Action::FormCycle);
+
+    if let Some(Modal::ConnForm(form)) = &mut app.modal {
+        form.focus = 1;
+    }
+    app.apply(Action::FormCycle);
+
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnForm(form))
+            if form.draft.ctype == ConnectionType::Wifi
+                && form.draft.ifname == "shared0"
+                && form.ifnames[form.ifname_idx].label == "shared0（Wi-Fi）"
+    ));
+}
+
+#[test]
+fn editing_connection_preserves_missing_selected_interface() {
+    let mut app = app_with_devices();
+    let mut draft = ConnectionDraft::new_ethernet();
+    draft.uuid = Some("uuid-1".into());
+    draft.name = "外接網卡".into();
+    draft.ifname = "enx-missing".into();
+
+    app.on_msg(Msg::ConnectionProfile {
+        uuid: "uuid-1".into(),
+        result: Ok(Box::new(draft)),
+    });
+
+    let Some(Modal::ConnForm(form)) = &app.modal else {
+        panic!("expected connection form");
+    };
+    assert_eq!(form.draft.ifname, "enx-missing");
+    assert_eq!(form.ifnames[form.ifname_idx].ifname, "enx-missing");
+    assert_eq!(form.ifnames[form.ifname_idx].label, "enx-missing（不存在）");
+    assert!(
+        form.rows()
+            .iter()
+            .any(|(field, _)| *field == ConnField::Ifname)
+    );
+}
+
+#[test]
+fn typing_does_not_edit_connection_interface_choice() {
+    let mut app = app_with_devices();
+    app.apply(Action::ConnAdd);
+    if let Some(Modal::ConnForm(form)) = &mut app.modal {
+        form.focus = 2;
+    }
+
+    app.apply(Action::FormInput('x'));
+    app.apply(Action::FormBackspace);
+
+    assert!(matches!(
+        &app.modal,
+        Some(Modal::ConnForm(form))
+            if form.draft.ifname.is_empty() && form.ifname_idx == 0
+    ));
 }
 
 #[test]

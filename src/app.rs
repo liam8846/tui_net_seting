@@ -218,7 +218,7 @@ pub enum Modal {
         on_yes: Confirmed,
     },
     Password(PasswordPrompt),
-    ConnForm(ConnForm),
+    ConnForm(Box<ConnForm>),
     HotspotForm(HotspotForm),
     ConnTest(ConnTestState),
 }
@@ -354,8 +354,17 @@ fn ip_method_label(method: IpMethod) -> &'static str {
 }
 
 /// The connection add/edit form.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnIfnameChoice {
+    pub ifname: String,
+    pub label: String,
+}
+
 pub struct ConnForm {
     pub draft: ConnectionDraft,
+    pub ifnames: Vec<ConnIfnameChoice>,
+    pub ifname_idx: usize,
+    devices: Vec<Device>,
     /// Index into [`ConnForm::editable`].
     pub focus: usize,
     field_errors: Vec<(ConnField, String)>,
@@ -363,22 +372,32 @@ pub struct ConnForm {
 }
 
 impl ConnForm {
-    pub fn add() -> Self {
-        Self {
+    pub fn add(devices: &[Device]) -> Self {
+        let mut form = Self {
             draft: ConnectionDraft::new_ethernet(),
+            ifnames: Vec::new(),
+            ifname_idx: 0,
+            devices: eligible_conn_devices(devices),
             focus: 0,
             field_errors: Vec::new(),
             error: None,
-        }
+        };
+        form.refresh_ifnames(false);
+        form
     }
 
-    pub fn edit(draft: ConnectionDraft) -> Self {
-        Self {
+    pub fn edit(draft: ConnectionDraft, devices: &[Device]) -> Self {
+        let mut form = Self {
             draft,
+            ifnames: Vec::new(),
+            ifname_idx: 0,
+            devices: eligible_conn_devices(devices),
             focus: 0,
             field_errors: Vec::new(),
             error: None,
-        }
+        };
+        form.refresh_ifnames(true);
+        form
     }
 
     /// Display order with an "editable right now" flag (manual-only fields
@@ -390,8 +409,8 @@ impl ConnForm {
             if self.draft.ctype.is_wifi() {
                 v.push((ConnField::Ssid, true));
             }
-            v.push((ConnField::Ifname, true));
         }
+        v.push((ConnField::Ifname, true));
         v.push((ConnField::Autoconnect, true));
         v.push((ConnField::V4Method, true));
         let m4 = self.draft.ipv4.method == IpMethod::Manual;
@@ -440,7 +459,11 @@ impl ConnForm {
             ConnField::Name => d.name.clone(),
             ConnField::Type => d.ctype.label().to_string(),
             ConnField::Ssid => d.ssid.clone(),
-            ConnField::Ifname => d.ifname.clone(),
+            ConnField::Ifname => self
+                .ifnames
+                .get(self.ifname_idx)
+                .map(|choice| choice.label.clone())
+                .unwrap_or_else(|| "任意 (*)".into()),
             ConnField::Autoconnect => if d.autoconnect { "是" } else { "否" }.into(),
             ConnField::V4Method => ip_method_label(d.ipv4.method).into(),
             ConnField::V4Addresses => d.ipv4.addresses.clone(),
@@ -458,7 +481,6 @@ impl ConnForm {
         match field {
             ConnField::Name => Some(&mut d.name),
             ConnField::Ssid => Some(&mut d.ssid),
-            ConnField::Ifname => Some(&mut d.ifname),
             ConnField::V4Addresses => Some(&mut d.ipv4.addresses),
             ConnField::V4Gateway => Some(&mut d.ipv4.gateway),
             ConnField::V4Dns => Some(&mut d.ipv4.dns),
@@ -498,7 +520,9 @@ impl ConnForm {
                 } else {
                     ConnectionType::Wifi
                 };
+                self.refresh_ifnames(false);
             }
+            ConnField::Ifname => self.cycle_ifname(),
             ConnField::Autoconnect => self.draft.autoconnect = !self.draft.autoconnect,
             ConnField::V4Method => self.draft.ipv4.method = self.draft.ipv4.method.cycle(),
             ConnField::V6Method => self.draft.ipv6.method = self.draft.ipv6.method.cycle(),
@@ -506,6 +530,63 @@ impl ConnForm {
         }
         self.clear_disabled_field_errors();
         self.clamp();
+    }
+
+    fn cycle_ifname(&mut self) {
+        if self.ifnames.is_empty() {
+            return;
+        }
+        self.ifname_idx = (self.ifname_idx + 1) % self.ifnames.len();
+        if let Some(choice) = self.ifnames.get(self.ifname_idx) {
+            self.draft.ifname.clone_from(&choice.ifname);
+        }
+    }
+
+    fn refresh_ifnames(&mut self, preserve_missing: bool) {
+        let selected = self.draft.ifname.clone();
+        let wanted_type = match self.draft.ctype {
+            ConnectionType::Wifi => Some(DeviceType::Wifi),
+            ConnectionType::Ethernet => Some(DeviceType::Ethernet),
+            ConnectionType::Loopback | ConnectionType::Other => None,
+        };
+        self.ifnames = vec![ConnIfnameChoice {
+            ifname: String::new(),
+            label: "任意 (*)".into(),
+        }];
+        self.ifnames.extend(
+            self.devices
+                .iter()
+                .filter(|device| {
+                    wanted_type
+                        .as_ref()
+                        .is_some_and(|dtype| device.dtype == *dtype)
+                })
+                .map(|device| ConnIfnameChoice {
+                    ifname: device.name.clone(),
+                    label: format!(
+                        "{}（{}）",
+                        device.name,
+                        conn_device_type_label(&device.dtype)
+                    ),
+                }),
+        );
+
+        let selected_idx = self
+            .ifnames
+            .iter()
+            .position(|choice| choice.ifname == selected);
+        if let Some(index) = selected_idx {
+            self.ifname_idx = index;
+        } else if preserve_missing && !selected.is_empty() {
+            self.ifnames.push(ConnIfnameChoice {
+                label: format!("{selected}（不存在）"),
+                ifname: selected,
+            });
+            self.ifname_idx = self.ifnames.len() - 1;
+        } else {
+            self.ifname_idx = 0;
+            self.draft.ifname.clear();
+        }
     }
 
     pub fn field_error(&self, field: ConnField) -> Option<&str> {
@@ -584,6 +665,25 @@ impl ConnForm {
         ] {
             self.validate_field(field);
         }
+    }
+}
+
+fn eligible_conn_devices(devices: &[Device]) -> Vec<Device> {
+    devices
+        .iter()
+        .filter(|device| {
+            matches!(device.dtype, DeviceType::Ethernet | DeviceType::Wifi)
+                && device.state != DeviceState::Unmanaged
+        })
+        .cloned()
+        .collect()
+}
+
+fn conn_device_type_label(dtype: &DeviceType) -> &'static str {
+    match dtype {
+        DeviceType::Wifi => "Wi-Fi",
+        DeviceType::Ethernet => "乙太網",
+        _ => "其他",
     }
 }
 
@@ -987,7 +1087,11 @@ impl App {
                     }
                 }
             }
-            Action::ConnAdd => self.modal = Some(Modal::ConnForm(ConnForm::add())),
+            Action::ConnAdd => {
+                self.modal = Some(Modal::ConnForm(Box::new(ConnForm::add(
+                    &self.devices.items,
+                ))));
+            }
             Action::ConnEdit => {
                 if let Some(c) = self.connections.selected() {
                     effects.push(Effect::LoadConnectionProfile(c.uuid.clone()));
@@ -1488,7 +1592,12 @@ impl App {
                 Err(e) => self.fail(e),
             },
             Msg::ConnectionProfile { uuid: _, result } => match result {
-                Ok(draft) => self.modal = Some(Modal::ConnForm(ConnForm::edit(*draft))),
+                Ok(draft) => {
+                    self.modal = Some(Modal::ConnForm(Box::new(ConnForm::edit(
+                        *draft,
+                        &self.devices.items,
+                    ))));
+                }
                 Err(e) => self.fail(e),
             },
             Msg::CommandDone { op, result } => {

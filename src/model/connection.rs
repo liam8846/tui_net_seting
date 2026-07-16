@@ -142,7 +142,7 @@ pub struct ConnectionDraft {
     pub uuid: Option<String>,
     pub name: String,
     pub ctype: ConnectionType,
-    /// Only used by `connection add`; empty means any interface (`*`).
+    /// Empty means any interface (`*` when adding, unset when editing).
     pub ifname: String,
     /// Only used when adding a wifi profile.
     pub ssid: String,
@@ -170,7 +170,7 @@ impl ConnectionDraft {
             uuid: Some(uuid.to_string()),
             ctype: ConnectionType::parse(&p.ctype),
             name: p.name.into_owned(),
-            ifname: String::new(),
+            ifname: p.ifname.into_owned(),
             ssid: String::new(),
             autoconnect: p.autoconnect,
             ipv4: IpDraft {

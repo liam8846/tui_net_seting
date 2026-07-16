@@ -21,7 +21,7 @@ const NM_WAIT: &str = "20";
 pub const DEVICE_FIELDS: &str = "DEVICE,TYPE,STATE,CONNECTION";
 pub const WIFI_FIELDS: &str = "IN-USE,SSID,BSSID,SIGNAL,SECURITY,CHAN,RATE";
 pub const CONNECTION_FIELDS: &str = "NAME,UUID,TYPE,DEVICE,ACTIVE,AUTOCONNECT";
-pub const PROFILE_FIELDS: &str = "connection.id,connection.autoconnect,connection.type,\
+pub const PROFILE_FIELDS: &str = "connection.id,connection.autoconnect,connection.type,connection.interface-name,\
      ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns,\
      ipv6.method,ipv6.addresses,ipv6.gateway,ipv6.dns";
 
@@ -142,6 +142,8 @@ pub fn args_connection_modify(uuid: &str, draft: &ConnectionDraft) -> Vec<String
     let mut v = base(&["connection", "modify", "uuid"]);
     v.push(uuid.to_string());
     push_settings(&mut v, draft);
+    v.push("connection.interface-name".into());
+    v.push(draft.ifname.clone());
     v
 }
 
@@ -365,5 +367,19 @@ mod tests {
         let joined = argv.join(" ");
         assert!(joined.contains("connection add type wifi con-name homewifi ifname *"));
         assert!(joined.contains("wifi.ssid Home WiFi"));
+    }
+
+    #[test]
+    fn modify_sets_interface_name() {
+        let mut draft = ConnectionDraft::new_ethernet();
+        draft.name = "office".into();
+        draft.ifname = "enp3s0".into();
+
+        let argv = args_connection_modify("u", &draft);
+        let pos = argv
+            .iter()
+            .position(|arg| arg == "connection.interface-name")
+            .unwrap();
+        assert_eq!(argv[pos + 1], "enp3s0");
     }
 }

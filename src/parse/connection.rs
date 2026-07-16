@@ -41,6 +41,7 @@ pub struct ProfileRow<'a> {
     pub name: Cow<'a, str>,
     pub autoconnect: bool,
     pub ctype: Cow<'a, str>,
+    pub ifname: Cow<'a, str>,
     pub ipv4_method: Cow<'a, str>,
     pub ipv4_addresses: Cow<'a, str>,
     pub ipv4_gateway: Cow<'a, str>,
@@ -51,7 +52,7 @@ pub struct ProfileRow<'a> {
     pub ipv6_dns: Cow<'a, str>,
 }
 
-const PROFILE_LINES: usize = 11;
+const PROFILE_LINES: usize = 12;
 
 pub fn parse_profile(raw: &str) -> Result<ProfileRow<'_>, ParseError> {
     let mut lines = raw.lines();
@@ -64,6 +65,7 @@ pub fn parse_profile(raw: &str) -> Result<ProfileRow<'_>, ParseError> {
         name,
         autoconnect: autoconnect == "yes",
         ctype,
+        ifname: field("connection.interface-name"),
         ipv4_method: field("ipv4.method"),
         ipv4_addresses: field("ipv4.addresses"),
         ipv4_gateway: field("ipv4.gateway"),
@@ -102,11 +104,12 @@ mod tests {
 
     #[test]
     fn parses_profile_dump() {
-        let raw = "office\nyes\n802-3-ethernet\nmanual\n192.0.2.10/24\n192.0.2.1\n\
+        let raw = "office\nyes\n802-3-ethernet\neth0\nmanual\n192.0.2.10/24\n192.0.2.1\n\
                    9.9.9.9,1.1.1.1\nauto\n\n\n\n";
         let p = parse_profile(raw).unwrap();
         assert_eq!(p.name, "office");
         assert!(p.autoconnect);
+        assert_eq!(p.ifname, "eth0");
         assert_eq!(p.ipv4_method, "manual");
         assert_eq!(p.ipv4_dns, "9.9.9.9,1.1.1.1");
         assert_eq!(p.ipv6_method, "auto");
@@ -115,7 +118,7 @@ mod tests {
 
     #[test]
     fn profile_with_missing_trailing_lines_is_padded() {
-        let p = parse_profile("n\nno\n802-3-ethernet\nauto\n").unwrap();
+        let p = parse_profile("n\nno\n802-3-ethernet\n\nauto\n").unwrap();
         assert_eq!(p.name, "n");
         assert!(!p.autoconnect);
         assert_eq!(p.ipv6_dns, "");

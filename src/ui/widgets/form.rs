@@ -69,6 +69,7 @@ pub fn render_connection(frame: &mut Frame, form: &ConnForm) {
             let choice = matches!(
                 field,
                 ConnField::Type
+                    | ConnField::Ifname
                     | ConnField::Autoconnect
                     | ConnField::V4Method
                     | ConnField::V6Method

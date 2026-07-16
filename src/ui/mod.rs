@@ -238,7 +238,8 @@ mod tests {
 
     use super::{draw, hint_line};
     use crate::app::{App, ConnTestStageState, ConnTestState, DetailPane, Modal, PasswordPrompt};
-    use crate::event::{Action, Tab};
+    use crate::event::{Action, Msg, Tab};
+    use crate::model::{Device, DeviceState, DeviceType};
 
     #[test]
     fn hint_line_keeps_complete_priority_groups_when_narrow() {
@@ -331,6 +332,40 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(visible.contains("secret42▌"));
+    }
+
+    #[test]
+    fn focused_connection_interface_renders_as_device_choice() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let mut app = App::new();
+        app.on_msg(Msg::Devices(Ok(vec![Device {
+            name: "eth0".into(),
+            dtype: DeviceType::Ethernet,
+            state: DeviceState::Disconnected,
+            connection: None,
+        }])));
+        app.apply(Action::ConnAdd);
+        if let Some(Modal::ConnForm(form)) = &mut app.modal {
+            form.focus = 2;
+        }
+        app.apply(Action::FormCycle);
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw connection form");
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        let compact = rendered.replace(' ', "");
+
+        assert!(rendered.contains('‹'));
+        assert!(rendered.contains('›'));
+        assert!(compact.contains("eth0（乙太網）"));
     }
 
     #[test]
