@@ -1,0 +1,114 @@
+name: CI/CD
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY_NAME: tui_net_seting
+
+jobs:
+  quality:
+    name: 品質檢查與測試
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 取得原始碼
+        uses: actions/checkout@v6
+
+      - name: 安裝 Rust 工具鏈
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: 檢查所有建置目標
+        run: cargo check --locked --all-targets
+
+      - name: 執行 Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: 執行測試
+        run: cargo test --locked
+
+  linux-build:
+    name: 編譯 ${{ matrix.target }}
+    needs: quality
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          - i686-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
+          - armv7-unknown-linux-gnueabihf
+          - powerpc64le-unknown-linux-gnu
+          - s390x-unknown-linux-gnu
+          - riscv64gc-unknown-linux-gnu
+    steps:
+      - name: 取得原始碼
+        uses: actions/checkout@v6
+
+      - name: 交叉編譯發行版本
+        uses: houseabsolute/actions-rust-cross@v1
+        with:
+          command: build
+          target: ${{ matrix.target }}
+          args: "--locked --release"
+          force-use-cross: true
+
+      - name: 整理建置產物
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/${BINARY_NAME}" \
+            "dist/${BINARY_NAME}-${{ matrix.target }}"
+
+      - name: 上傳建置產物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: 發布 GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - quality
+      - linux-build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: 取得所有平台產物
+        uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 建立或更新 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/* \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes \
+              --verify-tag
+          fi
