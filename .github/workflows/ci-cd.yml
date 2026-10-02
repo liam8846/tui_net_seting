@@ -75,7 +75,7 @@ jobs:
             "dist/${BINARY_NAME}-${{ matrix.target }}"
 
       - name: 上傳建置產物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
           path: dist/
@@ -93,7 +93,7 @@ jobs:
       contents: write
     steps:
       - name: 取得所有平台產物
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
